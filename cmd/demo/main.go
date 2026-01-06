@@ -19,6 +19,17 @@ func main() {
 
 	ilog.Set(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
+	var err error
+	var br *browser.Browser
+	if devtools == "" {
+		br, err = browser.Start(browser.Options{Headless: false})
+		if err != nil {
+			fmt.Println("start browser error:", err)
+			return
+		}
+		devtools = br.DevToolsURL
+	}
+
 	svc := api.NewService()
 	cfg := model.SessionConfig{
 		DevToolsURL:       devtools,
@@ -33,17 +44,6 @@ func main() {
 		return
 	}
 	defer svc.StopSession(id)
-
-	var br *browser.Browser
-	if devtools == "" {
-		// 自动启动浏览器
-		br, err = browser.Start(browser.Options{Headless: false})
-		if err != nil {
-			fmt.Println("start browser error:", err)
-			return
-		}
-		devtools = br.DevToolsURL
-	}
 
 	if err = svc.AttachTarget(id, ""); err != nil {
 		fmt.Println("attach target error:", err)
