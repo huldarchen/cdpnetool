@@ -10,11 +10,13 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	logger "cdpnetool/internal/logger"
 	"cdpnetool/internal/rules"
 	"cdpnetool/pkg/model"
+	"cdpnetool/pkg/rulespec"
 
 	"github.com/mafredri/cdp"
 	"github.com/mafredri/cdp/devtool"
@@ -32,7 +34,8 @@ type Manager struct {
 	events            chan model.Event
 	pending           chan any
 	engine            *rules.Engine
-	approvals         map[string]chan model.Rewrite
+	approvalsMu       sync.Mutex
+	approvals         map[string]chan rulespec.Rewrite
 	workers           int
 	bodySizeThreshold int64
 	processTimeoutMS  int
@@ -41,7 +44,7 @@ type Manager struct {
 
 // New 创建并返回一个管理器，用于管理CDP连接与拦截流程
 func New(devtoolsURL string, events chan model.Event, pending chan any, l logger.Logger) *Manager {
-	return &Manager{devtoolsURL: devtoolsURL, events: events, pending: pending, approvals: make(map[string]chan model.Rewrite), log: l}
+	return &Manager{devtoolsURL: devtoolsURL, events: events, pending: pending, approvals: make(map[string]chan rulespec.Rewrite), log: l}
 }
 
 // AttachTarget 附着到指定浏览器目标并建立CDP会话
@@ -427,12 +430,12 @@ func (m *Manager) applyContinue(ctx context.Context, ev *fetch.RequestPausedRepl
 }
 
 // applyFail 使请求失败并返回错误原因
-func (m *Manager) applyFail(ctx context.Context, ev *fetch.RequestPausedReply, f *model.Fail) {
+func (m *Manager) applyFail(ctx context.Context, ev *fetch.RequestPausedReply, f *rulespec.Fail) {
 	m.client.Fetch.FailRequest(ctx, &fetch.FailRequestArgs{RequestID: ev.RequestID, ErrorReason: network.ErrorReasonFailed})
 }
 
 // applyRespond 返回自定义响应（可只改头或完整替换）
-func (m *Manager) applyRespond(ctx context.Context, ev *fetch.RequestPausedReply, r *model.Respond, stage string) {
+func (m *Manager) applyRespond(ctx context.Context, ev *fetch.RequestPausedReply, r *rulespec.Respond, stage string) {
 	if stage == "response" && len(r.Body) == 0 {
 		// 仅修改响应码/头，继续响应
 		args := &fetch.ContinueResponseArgs{RequestID: ev.RequestID}
@@ -457,7 +460,7 @@ func (m *Manager) applyRespond(ctx context.Context, ev *fetch.RequestPausedReply
 }
 
 // applyRewrite 根据规则对请求或响应进行重写
-func (m *Manager) applyRewrite(ctx context.Context, ev *fetch.RequestPausedReply, rw *model.Rewrite, stage string) {
+func (m *Manager) applyRewrite(ctx context.Context, ev *fetch.RequestPausedReply, rw *rulespec.Rewrite, stage string) {
 	var url, method *string
 	if rw.URL != nil {
 		url = rw.URL
@@ -881,54 +884,63 @@ func toHeaderEntries(h map[string]string) []fetch.HeaderEntry {
 }
 
 // applyPause 进入人工审批流程并按超时默认动作处理
-func (m *Manager) applyPause(ctx context.Context, ev *fetch.RequestPausedReply, p *model.Pause, stage string) {
+func (m *Manager) applyPause(ctx context.Context, ev *fetch.RequestPausedReply, p *rulespec.Pause, stage string) {
 	id := string(ev.RequestID)
-	ch := make(chan model.Rewrite, 1)
+	ch := make(chan rulespec.Rewrite, 1)
+	m.approvalsMu.Lock()
 	m.approvals[id] = ch
+	m.approvalsMu.Unlock()
 	if m.pending != nil {
 		select {
 		case m.pending <- struct{ ID string }{ID: id}:
 		default:
 			switch p.DefaultAction.Type {
 			case "fulfill":
-				m.applyRespond(ctx, ev, &model.Respond{Status: p.DefaultAction.Status}, stage)
+				m.applyRespond(ctx, ev, &rulespec.Respond{Status: p.DefaultAction.Status}, stage)
 			case "fail":
-				m.applyFail(ctx, ev, &model.Fail{Reason: p.DefaultAction.Reason})
+				m.applyFail(ctx, ev, &rulespec.Fail{Reason: p.DefaultAction.Reason})
 			case "continue_mutated":
 				m.applyContinue(ctx, ev, stage)
 			default:
 				m.applyContinue(ctx, ev, stage)
 			}
 			m.events <- model.Event{Type: "degraded"}
+			m.approvalsMu.Lock()
 			delete(m.approvals, id)
+			m.approvalsMu.Unlock()
 			return
 		}
 	}
 	t := time.NewTimer(time.Duration(p.TimeoutMS) * time.Millisecond)
 	select {
 	case mut := <-ch:
-		_ = mut
-		m.applyContinue(ctx, ev, stage)
+		if mut.Body != nil || mut.URL != nil || mut.Method != nil || len(mut.Headers) > 0 || len(mut.Query) > 0 || len(mut.Cookies) > 0 {
+			m.applyRewrite(ctx, ev, &mut, stage)
+		} else {
+			m.applyContinue(ctx, ev, stage)
+		}
 	case <-t.C:
 		switch p.DefaultAction.Type {
 		case "fulfill":
-			m.applyRespond(ctx, ev, &model.Respond{Status: p.DefaultAction.Status}, stage)
+			m.applyRespond(ctx, ev, &rulespec.Respond{Status: p.DefaultAction.Status}, stage)
 		case "fail":
-			m.applyFail(ctx, ev, &model.Fail{Reason: p.DefaultAction.Reason})
+			m.applyFail(ctx, ev, &rulespec.Fail{Reason: p.DefaultAction.Reason})
 		case "continue_mutated":
 			m.applyContinue(ctx, ev, stage)
 		default:
 			m.applyContinue(ctx, ev, stage)
 		}
 	}
+	m.approvalsMu.Lock()
 	delete(m.approvals, id)
+	m.approvalsMu.Unlock()
 }
 
 // SetRules 设置新的规则集并初始化引擎
-func (m *Manager) SetRules(rs model.RuleSet) { m.engine = rules.New(rs) }
+func (m *Manager) SetRules(rs rulespec.RuleSet) { m.engine = rules.New(rs) }
 
 // UpdateRules 更新已有规则集到引擎
-func (m *Manager) UpdateRules(rs model.RuleSet) {
+func (m *Manager) UpdateRules(rs rulespec.RuleSet) {
 	if m.engine == nil {
 		m.engine = rules.New(rs)
 	} else {
@@ -937,9 +949,15 @@ func (m *Manager) UpdateRules(rs model.RuleSet) {
 }
 
 // Approve 根据审批ID应用外部提供的重写变更
-func (m *Manager) Approve(itemID string, mutations model.Rewrite) {
-	if ch, ok := m.approvals[itemID]; ok {
-		ch <- mutations
+func (m *Manager) Approve(itemID string, mutations rulespec.Rewrite) {
+	m.approvalsMu.Lock()
+	ch, ok := m.approvals[itemID]
+	m.approvalsMu.Unlock()
+	if ok {
+		select {
+		case ch <- mutations:
+		default:
+		}
 	}
 }
 

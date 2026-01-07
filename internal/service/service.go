@@ -1,12 +1,13 @@
 package service
 
 import (
+	"errors"
 	"sync"
 
 	"cdpnetool/internal/cdp"
 	logger "cdpnetool/internal/logger"
-	"cdpnetool/pkg/errx"
 	"cdpnetool/pkg/model"
+	"cdpnetool/pkg/rulespec"
 )
 
 type svc struct {
@@ -18,7 +19,7 @@ type svc struct {
 type session struct {
 	id      model.SessionID
 	cfg     model.SessionConfig
-	rules   model.RuleSet
+	rules   rulespec.RuleSet
 	events  chan model.Event
 	pending chan any
 	mgr     *cdp.Manager
@@ -61,13 +62,14 @@ func (s *svc) StopSession(id model.SessionID) error {
 	}
 	s.mu.Unlock()
 	if !ok {
-		return errx.New(errx.CodeSessionNotFound, "session not found")
+		return errors.New("cdpnetool: session not found")
+	}
+	if ses.mgr != nil {
+		_ = ses.mgr.Disable()
+		_ = ses.mgr.Detach()
 	}
 	close(ses.events)
 	close(ses.pending)
-	if ses.mgr != nil {
-		ses.mgr.Detach()
-	}
 	if s.log != nil {
 		s.log.Info("stop_session", "session", string(id))
 	}
@@ -80,7 +82,7 @@ func (s *svc) AttachTarget(id model.SessionID, target model.TargetID) error {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return errx.New(errx.CodeSessionNotFound, "session not found")
+		return errors.New("cdpnetool: session not found")
 	}
 	if ses.mgr == nil {
 		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, ses.pending, s.log)
@@ -106,7 +108,7 @@ func (s *svc) DetachTarget(id model.SessionID, target model.TargetID) error {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return errx.New(errx.CodeSessionNotFound, "session not found")
+		return errors.New("cdpnetool: session not found")
 	}
 	if ses.mgr != nil {
 		return ses.mgr.Detach()
@@ -120,10 +122,10 @@ func (s *svc) EnableInterception(id model.SessionID) error {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return errx.New(errx.CodeSessionNotFound, "session not found")
+		return errors.New("cdpnetool: session not found")
 	}
 	if ses.mgr == nil {
-		return errx.New(errx.CodeSessionNotFound, "manager not initialized")
+		return errors.New("cdpnetool: manager not initialized")
 	}
 	err := ses.mgr.Enable()
 	if err == nil {
@@ -144,10 +146,10 @@ func (s *svc) DisableInterception(id model.SessionID) error {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return errx.New(errx.CodeSessionNotFound, "session not found")
+		return errors.New("cdpnetool: session not found")
 	}
 	if ses.mgr == nil {
-		return errx.New(errx.CodeSessionNotFound, "manager not initialized")
+		return errors.New("cdpnetool: manager not initialized")
 	}
 	err := ses.mgr.Disable()
 	if err == nil {
@@ -163,12 +165,12 @@ func (s *svc) DisableInterception(id model.SessionID) error {
 }
 
 // LoadRules 为会话加载规则集并应用到管理器
-func (s *svc) LoadRules(id model.SessionID, rs model.RuleSet) error {
+func (s *svc) LoadRules(id model.SessionID, rs rulespec.RuleSet) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ses, ok := s.sessions[id]
 	if !ok {
-		return errx.New(errx.CodeSessionNotFound, "session not found")
+		return errors.New("cdpnetool: session not found")
 	}
 	ses.rules = rs
 	if s.log != nil {
@@ -200,7 +202,7 @@ func (s *svc) SubscribeEvents(id model.SessionID) (<-chan model.Event, error) {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return nil, errx.New(errx.CodeSessionNotFound, "session not found")
+		return nil, errors.New("cdpnetool: session not found")
 	}
 	return ses.events, nil
 }
@@ -211,13 +213,13 @@ func (s *svc) SubscribePending(id model.SessionID) (<-chan any, error) {
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
 	if !ok {
-		return nil, errx.New(errx.CodeSessionNotFound, "session not found")
+		return nil, errors.New("cdpnetool: session not found")
 	}
 	return ses.pending, nil
 }
 
 // ApproveRequest 审批请求阶段并应用重写
-func (s *svc) ApproveRequest(itemID string, mutations model.Rewrite) error {
+func (s *svc) ApproveRequest(itemID string, mutations rulespec.Rewrite) error {
 	s.mu.Lock()
 	for _, ses := range s.sessions {
 		if ses.mgr != nil {
@@ -229,7 +231,7 @@ func (s *svc) ApproveRequest(itemID string, mutations model.Rewrite) error {
 }
 
 // ApproveResponse 审批响应阶段并应用重写
-func (s *svc) ApproveResponse(itemID string, mutations model.Rewrite) error {
+func (s *svc) ApproveResponse(itemID string, mutations rulespec.Rewrite) error {
 	s.mu.Lock()
 	for _, ses := range s.sessions {
 		if ses.mgr != nil {

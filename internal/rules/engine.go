@@ -9,21 +9,28 @@ import (
 	"time"
 
 	"cdpnetool/pkg/model"
+	"cdpnetool/pkg/rulespec"
 )
 
 type Engine struct {
-	rs      model.RuleSet
-	mu      sync.Mutex
+	rs      rulespec.RuleSet
+	mu      sync.RWMutex
 	total   int64
 	matched int64
 	byRule  map[model.RuleID]int64
 }
 
 // New 创建规则引擎并加载规则集
-func New(rs model.RuleSet) *Engine { return &Engine{rs: rs} }
+func New(rs rulespec.RuleSet) *Engine {
+	return &Engine{rs: rs}
+}
 
 // Update 更新引擎内的规则集
-func (e *Engine) Update(rs model.RuleSet) { e.rs = rs }
+func (e *Engine) Update(rs rulespec.RuleSet) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.rs = rs
+}
 
 type Ctx struct {
 	URL         string
@@ -38,20 +45,21 @@ type Ctx struct {
 
 type Result struct {
 	RuleID *model.RuleID
-	Action *model.Action
+	Action *rulespec.Action
 }
 
 // Eval 评估一次拦截上下文并返回命中的规则与动作
 func (e *Engine) Eval(ctx Ctx) *Result {
 	e.mu.Lock()
 	e.total++
+	rs := e.rs
 	e.mu.Unlock()
-	if len(e.rs.Rules) == 0 {
+	if len(rs.Rules) == 0 {
 		return nil
 	}
-	var chosen *model.Rule
-	for i := range e.rs.Rules {
-		r := &e.rs.Rules[i]
+	var chosen *rulespec.Rule
+	for i := range rs.Rules {
+		r := &rs.Rules[i]
 		if matchRule(ctx, r.Match) {
 			if chosen == nil || r.Priority > chosen.Priority {
 				chosen = r
@@ -76,7 +84,7 @@ func (e *Engine) Eval(ctx Ctx) *Result {
 }
 
 // matchRule 按All/Any/None组合逻辑判断是否匹配
-func matchRule(ctx Ctx, m model.Match) bool {
+func matchRule(ctx Ctx, m rulespec.Match) bool {
 	ok := true
 	if len(m.AllOf) > 0 {
 		ok = ok && allOf(ctx, m.AllOf)
@@ -91,7 +99,7 @@ func matchRule(ctx Ctx, m model.Match) bool {
 }
 
 // allOf 所有条件需满足
-func allOf(ctx Ctx, cs []model.Condition) bool {
+func allOf(ctx Ctx, cs []rulespec.Condition) bool {
 	for i := range cs {
 		if !cond(ctx, cs[i]) {
 			return false
@@ -101,7 +109,7 @@ func allOf(ctx Ctx, cs []model.Condition) bool {
 }
 
 // anyOf 任一条件满足即可
-func anyOf(ctx Ctx, cs []model.Condition) bool {
+func anyOf(ctx Ctx, cs []rulespec.Condition) bool {
 	for i := range cs {
 		if cond(ctx, cs[i]) {
 			return true
@@ -111,10 +119,10 @@ func anyOf(ctx Ctx, cs []model.Condition) bool {
 }
 
 // noneOf 所有条件均不应满足
-func noneOf(ctx Ctx, cs []model.Condition) bool { return !anyOf(ctx, cs) }
+func noneOf(ctx Ctx, cs []rulespec.Condition) bool { return !anyOf(ctx, cs) }
 
 // cond 评估单个条件是否命中
-func cond(ctx Ctx, c model.Condition) bool {
+func cond(ctx Ctx, c rulespec.Condition) bool {
 	switch c.Type {
 	case "url":
 		switch c.Mode {

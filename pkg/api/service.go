@@ -4,6 +4,7 @@ import (
 	logger "cdpnetool/internal/logger"
 	"cdpnetool/internal/service"
 	"cdpnetool/pkg/model"
+	"cdpnetool/pkg/rulespec"
 )
 
 type Service interface {
@@ -15,13 +16,13 @@ type Service interface {
 	EnableInterception(id model.SessionID) error
 	DisableInterception(id model.SessionID) error
 
-	LoadRules(id model.SessionID, rs model.RuleSet) error
+	LoadRules(id model.SessionID, rs rulespec.RuleSet) error
 	GetRuleStats(id model.SessionID) (model.EngineStats, error)
 
 	SubscribeEvents(id model.SessionID) (<-chan model.Event, error)
 	SubscribePending(id model.SessionID) (<-chan any, error)
-	ApproveRequest(itemID string, mutations model.Rewrite) error
-	ApproveResponse(itemID string, mutations model.Rewrite) error
+	ApproveRequest(itemID string, mutations rulespec.Rewrite) error
+	ApproveResponse(itemID string, mutations rulespec.Rewrite) error
 	Reject(itemID string) error
 }
 

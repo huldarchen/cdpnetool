@@ -12,6 +12,7 @@ import (
 	logger "cdpnetool/internal/logger"
 	api "cdpnetool/pkg/api"
 	"cdpnetool/pkg/model"
+	"cdpnetool/pkg/rulespec"
 )
 
 func main() {
@@ -54,21 +55,21 @@ func main() {
 		return
 	}
 
-	rs := model.RuleSet{
+	rs := rulespec.RuleSet{
 		Version: "1.0",
-		Rules: []model.Rule{
+		Rules: []rulespec.Rule{
 			{
 				ID:       model.RuleID("demo_resp_patch"),
 				Priority: 100,
 				Mode:     "short_circuit",
-				Match: model.Match{
-					AllOf: []model.Condition{
+				Match: rulespec.Match{
+					AllOf: []rulespec.Condition{
 						{Type: "mime", Mode: "prefix", Pattern: "application/json"},
 					},
 				},
-				Action: model.Action{
-					Rewrite: &model.Rewrite{
-						Body: &model.BodyPatch{Type: "json_patch", Ops: []any{
+				Action: rulespec.Action{
+					Rewrite: &rulespec.Rewrite{
+						Body: &rulespec.BodyPatch{Type: "json_patch", Ops: []any{
 							map[string]any{"op": "add", "path": "/_cdpnetool/demo", "value": true},
 						}},
 					},
