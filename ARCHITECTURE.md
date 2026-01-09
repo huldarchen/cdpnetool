@@ -448,3 +448,38 @@ type Service interface {
    - 定义基础 Metrics 接口，在关键路径打点和埋指标。
 
 上述计划将作为后续所有重构工作的“路线图”，实际执行中如有设计调整，应在此文档中更新对应小节并说明原因。
+
+## GUI 与 HTTP API（阶段一）
+
+- **目标**：为后续 GUI（Web/Electron/桌面）提供稳定、协议无关的控制接口，封装内部 `pkg/api.Service` 能力。
+- **接口形态**：
+  - HTTP JSON：所有控制接口统一使用 `POST` + JSON 请求体，采用 RPC 风格，不暴露资源路径层级细节。
+  - 事件流：后续通过独立通道（如 SSE/WebSocket）推送拦截事件与 Pending 审批项。
+- **调用约定**：
+  - 统一入口路径（例如 `/api/v1`）。
+  - 请求格式：
+    - `method`：字符串，表示操作名（例如 `session.start`、`target.list`）。
+    - `id`：可选，请求 ID，便于 GUI 关联响应。
+    - `params`：任意 JSON 对象，按 `method` 不同有不同结构。
+  - 响应格式：
+    - `id`：与请求对应的 ID。
+    - `result`：成功时的返回数据。
+    - `error`：失败时的错误对象，包含 `code` 与 `message`。
+- **核心方法规划（第一阶段）**：
+  - 会话管理：
+    - `session.start`：创建拦截会话，对应 `StartSession`。
+    - `session.stop`：停止会话，对应 `StopSession`。
+  - 目标管理：
+    - `target.list`：列出某个 Session 下浏览器中的 page 目标，对应 `ListTargets`。
+    - `target.attach`：附加指定 page 目标，对应 `AttachTarget`。
+    - `target.detach`：移除指定 page 目标，对应 `DetachTarget`。
+  - 拦截控制：
+    - `session.enable`：启用拦截，对应 `EnableInterception`。
+    - `session.disable`：停用拦截，对应 `DisableInterception`。
+  - 规则与统计：
+    - `rules.load`：装载 RuleSet，对应 `LoadRules`。
+    - `stats.rules`：查询规则命中统计，对应 `GetRuleStats`。
+- **后续扩展方向**：
+  - 增加 `session.list` 等方法，支持多会话管理与状态查看。
+  - 增加 Pending 审批相关方法（例如 `pending.list`、`pending.approve`、`pending.reject`）。
+  - 确定事件通道方案（SSE 或 WebSocket），并与上述 `method` 命名保持一致的事件类型。
