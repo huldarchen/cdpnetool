@@ -14,34 +14,43 @@ import (
 )
 
 // applyContinue 继续原请求或响应不做修改
-func (m *Manager) applyContinue(ctx context.Context, ev *fetch.RequestPausedReply, stage string) {
+func (m *Manager) applyContinue(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, stage string) {
+	if ts == nil || ts.client == nil {
+		return
+	}
 	if stage == "response" {
-		m.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
+		_ = ts.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
 		m.log.Debug("继续原始响应")
 	} else {
-		m.client.Fetch.ContinueRequest(ctx, &fetch.ContinueRequestArgs{RequestID: ev.RequestID})
+		_ = ts.client.Fetch.ContinueRequest(ctx, &fetch.ContinueRequestArgs{RequestID: ev.RequestID})
 		m.log.Debug("继续原始请求")
 	}
 }
 
 // applyFail 使请求失败并返回错误原因
-func (m *Manager) applyFail(ctx context.Context, ev *fetch.RequestPausedReply, f *rulespec.Fail) {
-	m.client.Fetch.FailRequest(ctx, &fetch.FailRequestArgs{RequestID: ev.RequestID, ErrorReason: network.ErrorReason(f.Reason)})
+func (m *Manager) applyFail(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, f *rulespec.Fail) {
+	if ts == nil || ts.client == nil || f == nil {
+		return
+	}
+	_ = ts.client.Fetch.FailRequest(ctx, &fetch.FailRequestArgs{RequestID: ev.RequestID, ErrorReason: network.ErrorReason(f.Reason)})
 }
 
 // applyRespond 返回自定义响应（可只改头或完整替换）
-func (m *Manager) applyRespond(ctx context.Context, ev *fetch.RequestPausedReply, r *rulespec.Respond, stage string) {
+func (m *Manager) applyRespond(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, r *rulespec.Respond, stage string) {
+	if ts == nil || ts.client == nil || r == nil {
+		return
+	}
 	if stage == "response" && len(r.Body) == 0 {
 		// 仅修改响应码/头，继续响应
-		m.continueResponseWithModifications(ctx, ev, r)
+		m.continueResponseWithModifications(ctx, ts, ev, r)
 		return
 	}
 	// fulfill 完整响应
-	m.fulfillRequest(ctx, ev, r)
+	m.fulfillRequest(ctx, ts, ev, r)
 }
 
 // continueResponseWithModifications 继续响应并修改状态码/头部
-func (m *Manager) continueResponseWithModifications(ctx context.Context, ev *fetch.RequestPausedReply, r *rulespec.Respond) {
+func (m *Manager) continueResponseWithModifications(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, r *rulespec.Respond) {
 	args := &fetch.ContinueResponseArgs{RequestID: ev.RequestID}
 	if r.Status != 0 {
 		args.ResponseCode = &r.Status
@@ -49,11 +58,11 @@ func (m *Manager) continueResponseWithModifications(ctx context.Context, ev *fet
 	if len(r.Headers) > 0 {
 		args.ResponseHeaders = toHeaderEntries(r.Headers)
 	}
-	m.client.Fetch.ContinueResponse(ctx, args)
+	_ = ts.client.Fetch.ContinueResponse(ctx, args)
 }
 
 // fulfillRequest 完整响应请求
-func (m *Manager) fulfillRequest(ctx context.Context, ev *fetch.RequestPausedReply, r *rulespec.Respond) {
+func (m *Manager) fulfillRequest(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, r *rulespec.Respond) {
 	args := &fetch.FulfillRequestArgs{RequestID: ev.RequestID, ResponseCode: r.Status}
 	if len(r.Headers) > 0 {
 		args.ResponseHeaders = toHeaderEntries(r.Headers)
@@ -61,48 +70,51 @@ func (m *Manager) fulfillRequest(ctx context.Context, ev *fetch.RequestPausedRep
 	if len(r.Body) > 0 {
 		args.Body = r.Body
 	}
-	m.client.Fetch.FulfillRequest(ctx, args)
+	_ = ts.client.Fetch.FulfillRequest(ctx, args)
 }
 
 // applyRewrite 根据规则对请求或响应进行重写
-func (m *Manager) applyRewrite(ctx context.Context, ev *fetch.RequestPausedReply, rw *rulespec.Rewrite, stage string) {
+func (m *Manager) applyRewrite(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, rw *rulespec.Rewrite, stage string) {
+	if ts == nil || ts.client == nil || rw == nil {
+		return
+	}
 	if stage == "response" {
-		m.applyResponseRewrite(ctx, ev, rw)
+		m.applyResponseRewrite(ctx, ts, ev, rw)
 	} else {
-		m.applyRequestRewrite(ctx, ev, rw)
+		m.applyRequestRewrite(ctx, ts, ev, rw)
 	}
 }
 
 // applyResponseRewrite 处理响应阶段的重写
-func (m *Manager) applyResponseRewrite(ctx context.Context, ev *fetch.RequestPausedReply, rw *rulespec.Rewrite) {
+func (m *Manager) applyResponseRewrite(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, rw *rulespec.Rewrite) {
 	if rw.Body == nil {
 		// 仅修改头部，不需要获取 Body
 		if rw.Headers != nil {
 			cur := m.getCurrentResponseHeaders(ev)
 			cur = applyHeaderPatch(cur, rw.Headers)
-			m.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID, ResponseHeaders: toHeaderEntries(cur)})
+			_ = ts.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID, ResponseHeaders: toHeaderEntries(cur)})
 			return
 		}
-		m.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
+		_ = ts.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
 		return
 	}
 
 	// 需要修改 Body
 	ctype, clen := m.extractResponseMetadata(ev)
 	if !shouldGetBody(ctype, clen, m.bodySizeThreshold) {
-		m.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
+		_ = ts.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
 		return
 	}
 
-	bodyText, ok := m.fetchResponseBody(ctx, ev.RequestID)
+	bodyText, ok := m.fetchResponseBody(ctx, ts, ev.RequestID)
 	if !ok {
-		m.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
+		_ = ts.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
 		return
 	}
 
 	newBody, ok := applyBodyPatch(bodyText, rw.Body)
 	if !ok || len(newBody) == 0 {
-		m.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
+		_ = ts.client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
 		return
 	}
 
@@ -118,7 +130,7 @@ func (m *Manager) applyResponseRewrite(ctx context.Context, ev *fetch.RequestPau
 		ResponseHeaders: toHeaderEntries(cur),
 		Body:            newBody,
 	}
-	m.client.Fetch.FulfillRequest(ctx, args)
+	_ = ts.client.Fetch.FulfillRequest(ctx, args)
 }
 
 // getCurrentResponseHeaders 获取当前响应头部映射
@@ -148,10 +160,13 @@ func (m *Manager) extractResponseMetadata(ev *fetch.RequestPausedReply) (ctype s
 }
 
 // fetchResponseBody 获取响应 Body 文本
-func (m *Manager) fetchResponseBody(ctx context.Context, requestID fetch.RequestID) (string, bool) {
-	ctx2, cancel := context.WithTimeout(m.ctx, 500*time.Millisecond)
+func (m *Manager) fetchResponseBody(ctx context.Context, ts *targetSession, requestID fetch.RequestID) (string, bool) {
+	if ts == nil || ts.client == nil {
+		return "", false
+	}
+	ctx2, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	rb, err := m.client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: requestID})
+	rb, err := ts.client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: requestID})
 	if err != nil || rb == nil {
 		return "", false
 	}
@@ -165,7 +180,11 @@ func (m *Manager) fetchResponseBody(ctx context.Context, requestID fetch.Request
 }
 
 // applyRequestRewrite 处理请求阶段的重写
-func (m *Manager) applyRequestRewrite(ctx context.Context, ev *fetch.RequestPausedReply, rw *rulespec.Rewrite) {
+func (m *Manager) applyRequestRewrite(ctx context.Context, ts *targetSession, ev *fetch.RequestPausedReply, rw *rulespec.Rewrite) {
+	if ts == nil || ts.client == nil || rw == nil {
+		return
+	}
+
 	var url, method *string
 	if rw.URL != nil {
 		url = rw.URL
@@ -195,7 +214,7 @@ func (m *Manager) applyRequestRewrite(ctx context.Context, ev *fetch.RequestPaus
 		args.PostData = post
 	}
 
-	m.client.Fetch.ContinueRequest(ctx, args)
+	_ = ts.client.Fetch.ContinueRequest(ctx, args)
 }
 
 // buildRequestHeaders 构建请求头部列表
@@ -261,7 +280,7 @@ func (m *Manager) buildRequestBody(rw *rulespec.Rewrite, ev *fetch.RequestPaused
 	return nil
 }
 
-// toHeaderEntries 将头部映射转换为CDP头部条目
+// toHeaderEntries 将头部映射转换为 CDP 头部条目
 func toHeaderEntries(h map[string]string) []fetch.HeaderEntry {
 	out := make([]fetch.HeaderEntry, 0, len(h))
 	for k, v := range h {

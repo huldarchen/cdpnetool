@@ -71,7 +71,7 @@ func (s *svc) StopSession(id model.SessionID) error {
 	}
 	if ses.mgr != nil {
 		_ = ses.mgr.Disable()
-		_ = ses.mgr.Detach()
+		_ = ses.mgr.Detach("")
 	}
 	close(ses.events)
 	close(ses.pending)
@@ -110,7 +110,7 @@ func (s *svc) DetachTarget(id model.SessionID, target model.TargetID) error {
 		return errors.New("cdpnetool: session not found")
 	}
 	if ses.mgr != nil {
-		return ses.mgr.Detach()
+		return ses.mgr.Detach(target)
 	}
 	return nil
 }

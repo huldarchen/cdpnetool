@@ -21,290 +21,261 @@ import (
 	"github.com/mafredri/cdp/rpcc"
 )
 
-type workspaceMode int
-
-const (
-	workspaceModeAutoFollow workspaceMode = iota
-	workspaceModeFixed
-)
+// Manager 负责管理一个会话下的所有浏览器 page 目标
+//
+// 设计要点：
+//   - 一个 Manager 对应一个 DevTools 端点（一个浏览器实例）。
+//   - 同一会话内可以同时附加多个 page，每个 page 对应一个独立的 targetSession。
+//   - 不再自动发现 / 自动跟随前台页面，所有需要拦截的 page 由调用方显式 Attach / Detach。
+//   - 默认行为：当调用 AttachTarget 且未指定 targetID 时，自动选择第一个 Type=="page" 的目标。
+//   - 当某个 page 被用户关闭或连接异常导致拦截流终止时，自动清理对应的 targetSession。
+//
+// 这样可以在保证能力的前提下，大幅降低隐式状态和出错概率。
 
 type Manager struct {
-	devtoolsURL       string
-	conn              *rpcc.Conn
-	client            *cdp.Client
-	ctx               context.Context
-	cancel            context.CancelFunc
-	events            chan model.Event
-	pending           chan model.PendingItem
+	devtoolsURL string
+	log         logger.Logger
+
+	// 规则与运行时配置
 	engine            *rules.Engine
-	approvalsMu       sync.Mutex
-	approvals         map[string]chan rulespec.Rewrite
-	pool              *workerPool
 	bodySizeThreshold int64
 	processTimeoutMS  int
-	log               logger.Logger
-	attachMu          sync.Mutex
-	currentTarget     model.TargetID
-	fixedTarget       model.TargetID
-	workspaceStop     chan struct{}
-	mode              workspaceMode
-	watchersMu        sync.Mutex
-	watchers          map[model.TargetID]*targetWatcher
+
+	// 并发控制（在会话维度共享）
+	pool *workerPool
+
+	// 事件通道（由 service 层创建并传入，会话级共享）
+	events  chan model.Event
+	pending chan model.PendingItem
+
+	// Pause 审批通道
+	approvalsMu sync.Mutex
+	approvals   map[string]chan rulespec.Rewrite
+
+	// 已附加的 targets
+	targetsMu sync.Mutex
+	targets   map[model.TargetID]*targetSession
+
+	// 拦截开关（会话级）
+	stateMu sync.RWMutex
+	enabled bool
 }
 
-type targetWatcher struct {
+// targetSession 表示一个已附加并可拦截的 page 目标
+// 每个目标拥有独立的 CDP 连接与上下文，但共享同一个规则引擎与 worker pool。
+
+type targetSession struct {
 	id     model.TargetID
 	conn   *rpcc.Conn
 	client *cdp.Client
+	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-// New 创建并返回一个管理器，用于管理CDP连接与拦截流程
+// New 创建并返回一个管理器，用于管理 CDP 连接与拦截流程
 func New(devtoolsURL string, events chan model.Event, pending chan model.PendingItem, l logger.Logger) *Manager {
 	if l == nil {
 		l = logger.NewNoopLogger()
 	}
 	return &Manager{
 		devtoolsURL: devtoolsURL,
+		log:         l,
 		events:      events,
 		pending:     pending,
 		approvals:   make(map[string]chan rulespec.Rewrite),
-		log:         l,
-		mode:        workspaceModeAutoFollow,
-		watchers:    make(map[model.TargetID]*targetWatcher),
+		targets:     make(map[model.TargetID]*targetSession),
 	}
 }
 
-// AttachTarget 附着到指定浏览器目标并建立CDP会话
+// setEnabled 设置拦截开关
+func (m *Manager) setEnabled(v bool) {
+	m.stateMu.Lock()
+	defer m.stateMu.Unlock()
+	m.enabled = v
+}
+
+// isEnabled 获取当前拦截开关状态
+func (m *Manager) isEnabled() bool {
+	m.stateMu.RLock()
+	defer m.stateMu.RUnlock()
+	return m.enabled
+}
+
+// AttachTarget 附加到指定浏览器目标并建立 CDP 会话。
+//
+// 语义：
+//   - 如果 target 为空，自动选择第一个 Type=="page" 的目标。
+//   - 如果指定的 target 已经附加，则本调用是幂等的，直接返回。
+//   - 不会影响其他已附加的目标，可以多次调用以附加多个 page。
 func (m *Manager) AttachTarget(target model.TargetID) error {
-	m.attachMu.Lock()
-	defer m.attachMu.Unlock()
-	m.log.Info("开始附加浏览器目标", "devtools", m.devtoolsURL, "target", string(target))
+	m.targetsMu.Lock()
+	defer m.targetsMu.Unlock()
+
+	if m.devtoolsURL == "" {
+		return fmt.Errorf("devtools url empty")
+	}
+
+	// 已附加则幂等返回
 	if target != "" {
-		m.fixedTarget = target
-		m.mode = workspaceModeFixed
-	} else {
-		m.fixedTarget = ""
-		m.mode = workspaceModeAutoFollow
+		if _, ok := m.targets[target]; ok {
+			return nil
+		}
 	}
-	if m.cancel != nil {
-		m.cancel()
-	}
-	if m.conn != nil {
-		_ = m.conn.Close()
-	}
+
 	ctx, cancel := context.WithCancel(context.Background())
-	m.ctx = ctx
-	m.cancel = cancel
-	sel, err := m.resolveTarget(ctx, target)
+	selected, err := m.selectTarget(ctx, target)
 	if err != nil {
+		cancel()
 		return err
 	}
-	if sel == nil {
+	if selected == nil {
+		cancel()
 		m.log.Error("未找到可附加的浏览器目标")
 		return fmt.Errorf("no target")
 	}
-	conn, err := rpcc.DialContext(ctx, sel.WebSocketDebuggerURL)
+
+	conn, err := rpcc.DialContext(ctx, selected.WebSocketDebuggerURL)
 	if err != nil {
+		cancel()
 		m.log.Error("连接浏览器 DevTools 失败", "error", err)
 		return err
 	}
-	m.conn = conn
-	m.client = cdp.NewClient(conn)
-	m.currentTarget = model.TargetID(sel.ID)
-	m.log.Info("附加浏览器目标成功", "target", string(m.currentTarget))
+
+	client := cdp.NewClient(conn)
+	ts := &targetSession{
+		id:     model.TargetID(selected.ID),
+		conn:   conn,
+		client: client,
+		ctx:    ctx,
+		cancel: cancel,
+	}
+
+	m.targets[ts.id] = ts
+	m.log.Info("附加浏览器目标成功", "target", string(ts.id))
+
+	// 如果会话已经启用拦截，则对新目标立即启用
+	if m.isEnabled() {
+		if err := m.enableTarget(ts); err != nil {
+			m.log.Error("为新目标启用拦截失败", "target", string(ts.id), "error", err)
+		}
+	}
+
+	return nil
+}
+
+// Detach 断开目标连接并释放资源。
+// target 为空时，表示断开所有已附加目标。
+func (m *Manager) Detach(target model.TargetID) error {
+	m.targetsMu.Lock()
+	defer m.targetsMu.Unlock()
+
 	if target == "" {
-		m.startWorkspaceWatcher()
-	} else {
-		m.stopWorkspaceWatcher()
+		for id, ts := range m.targets {
+			m.closeTargetSession(ts)
+			delete(m.targets, id)
+		}
+		return nil
 	}
+
+	ts, ok := m.targets[target]
+	if !ok {
+		return nil
+	}
+	m.closeTargetSession(ts)
+	delete(m.targets, target)
 	return nil
 }
 
-// Detach 断开当前会话连接并释放资源
-func (m *Manager) Detach() error {
-	m.attachMu.Lock()
-	defer m.attachMu.Unlock()
-	if m.cancel != nil {
-		m.cancel()
+// closeTargetSession 关闭单个 targetSession
+func (m *Manager) closeTargetSession(ts *targetSession) {
+	if ts == nil {
+		return
 	}
-	if m.pool != nil {
-		m.pool.stop()
+	if ts.cancel != nil {
+		ts.cancel()
 	}
-	m.stopWorkspaceWatcher()
-	if m.conn != nil {
-		return m.conn.Close()
+	if ts.conn != nil {
+		_ = ts.conn.Close()
 	}
-	return nil
 }
 
-// Enable 启用Fetch/Network拦截功能并开始消费事件
+// Enable 启用 Fetch/Network 拦截功能并开始消费事件
 func (m *Manager) Enable() error {
-	if m.client == nil {
-		return fmt.Errorf("not attached")
+	m.targetsMu.Lock()
+	defer m.targetsMu.Unlock()
+
+	if len(m.targets) == 0 {
+		return fmt.Errorf("no targets attached")
 	}
+
 	m.log.Info("开始启用拦截功能")
-	err := m.client.Network.Enable(m.ctx, nil)
-	if err != nil {
+	m.setEnabled(true)
+
+	for id, ts := range m.targets {
+		if err := m.enableTarget(ts); err != nil {
+			m.log.Error("为目标启用拦截失败", "target", string(id), "error", err)
+		}
+	}
+
+	m.log.Info("拦截功能启用完成")
+	return nil
+}
+
+// enableTarget 为单个目标启用 Network/Fetch 并启动事件消费
+func (m *Manager) enableTarget(ts *targetSession) error {
+	if ts == nil || ts.client == nil {
+		return fmt.Errorf("target client not initialized")
+	}
+
+	if err := ts.client.Network.Enable(ts.ctx, nil); err != nil {
 		return err
 	}
+
 	p := "*"
 	patterns := []fetch.RequestPattern{
 		{URLPattern: &p, RequestStage: fetch.RequestStageRequest},
 		{URLPattern: &p, RequestStage: fetch.RequestStageResponse},
 	}
-	err = m.client.Fetch.Enable(m.ctx, &fetch.EnableArgs{Patterns: patterns})
-	if err != nil {
+	if err := ts.client.Fetch.Enable(ts.ctx, &fetch.EnableArgs{Patterns: patterns}); err != nil {
 		return err
 	}
+
 	// 如果已配置 worker pool 且未启动，现在启动
-	if m.pool != nil && m.pool.sem != nil && m.ctx != nil {
-		m.pool.start(m.ctx)
+	if m.pool != nil && m.pool.sem != nil {
+		m.pool.setLogger(m.log)
+		m.pool.start(ts.ctx)
 	}
-	go m.consume()
-	m.log.Info("拦截功能启用完成")
+
+	go m.consume(ts)
 	return nil
 }
 
 // Disable 停止拦截功能但保留连接
 func (m *Manager) Disable() error {
-	if m.client == nil {
-		return fmt.Errorf("not attached")
+	m.targetsMu.Lock()
+	defer m.targetsMu.Unlock()
+
+	if len(m.targets) == 0 {
+		m.setEnabled(false)
+		return nil
 	}
-	return m.client.Fetch.Disable(m.ctx)
-}
 
-// consume 持续接收拦截事件并按并发限制分发处理
+	m.setEnabled(false)
 
-// dispatchPaused 根据并发配置调度单次拦截事件处理
-
-func (m *Manager) startWorkspaceWatcher() {
-	m.log.Debug("开始工作区轮询", "func", "startWorkspaceWatcher")
-	if m.workspaceStop != nil {
-		return
-	}
-	ch := make(chan struct{})
-	m.workspaceStop = ch
-	go m.workspaceLoop(ch)
-}
-
-func (m *Manager) stopWorkspaceWatcher() {
-	if m.workspaceStop != nil {
-		close(m.workspaceStop)
-		m.workspaceStop = nil
-	}
-	m.stopAllWatchers()
-}
-
-func (m *Manager) workspaceLoop(stop <-chan struct{}) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case <-ticker.C:
-			m.checkWorkspace()
+	for id, ts := range m.targets {
+		if ts.client == nil {
+			continue
+		}
+		if err := ts.client.Fetch.Disable(ts.ctx); err != nil {
+			m.log.Error("停用目标拦截失败", "target", string(id), "error", err)
 		}
 	}
-}
 
-func (m *Manager) checkWorkspace() {
-	m.log.Debug("开始工作区轮询", "func", "checkWorkspace")
-	if m.devtoolsURL == "" {
-		return
-	}
-	if m.fixedTarget != "" {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	dt := devtool.New(m.devtoolsURL)
-	targets, err := dt.List(ctx)
-	if err != nil {
-		m.log.Debug("工作区轮询获取目标列表失败", "error", err)
-		return
-	}
-	m.refreshWatchers(ctx, targets)
-	sel := selectAutoTarget(targets)
-	if sel == nil {
-		return
-	}
-	candidate := model.TargetID(sel.ID)
-	if candidate == "" {
-		return
-	}
-	if m.currentTarget != "" && string(m.currentTarget) == string(candidate) {
-		return
-	}
-	if err := m.attachAndEnable(candidate, true); err != nil {
-		m.log.Error("自动切换浏览器目标失败", "error", err)
-	}
-}
-
-func (m *Manager) attachAndEnable(target model.TargetID, auto bool) error {
-	var err error
-	if auto {
-		err = m.attachAuto(target)
-	} else {
-		err = m.AttachTarget(target)
-	}
-	if err != nil {
-		return err
-	}
-	if err := m.Enable(); err != nil {
-		return err
-	}
 	return nil
 }
 
-func (m *Manager) attachAuto(target model.TargetID) error {
-	m.attachMu.Lock()
-	defer m.attachMu.Unlock()
-	m.log.Info("自动附加浏览器目标", "devtools", m.devtoolsURL, "target", string(target))
-	if m.cancel != nil {
-		m.cancel()
-	}
-	if m.conn != nil {
-		_ = m.conn.Close()
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	m.ctx = ctx
-	m.cancel = cancel
-	sel, err := m.resolveTarget(ctx, target)
-	if err != nil {
-		return err
-	}
-	if sel == nil {
-		m.log.Error("未找到可附加的浏览器目标")
-		return fmt.Errorf("no target")
-	}
-	conn, err := rpcc.DialContext(ctx, sel.WebSocketDebuggerURL)
-	if err != nil {
-		m.log.Error("连接浏览器 DevTools 失败", "error", err)
-		return err
-	}
-	m.conn = conn
-	m.client = cdp.NewClient(conn)
-	m.currentTarget = model.TargetID(sel.ID)
-	m.log.Info("自动附加浏览器目标成功", "target", string(m.currentTarget))
-	return nil
-}
-
-// decide 构造规则上下文并进行匹配决策
-func (m *Manager) decide(ev *fetch.RequestPausedReply, stage string) *rules.Result {
-	if m.engine == nil {
-		return nil
-	}
-	ctx := m.buildRuleContext(ev, stage)
-	res := m.engine.Eval(ctx)
-	if res == nil {
-		return nil
-	}
-	return res
-}
-
-func (m *Manager) buildRuleContext(ev *fetch.RequestPausedReply, stage string) rules.Ctx {
+// buildRuleContext 构造规则匹配上下文
+func (m *Manager) buildRuleContext(ts *targetSession, ev *fetch.RequestPausedReply, stage string) rules.Ctx {
 	h := map[string]string{}
 	q := map[string]string{}
 	ck := map[string]string{}
@@ -335,9 +306,9 @@ func (m *Manager) buildRuleContext(ev *fetch.RequestPausedReply, stage string) r
 			}
 		}
 		if shouldGetBody(ctype, clen, m.bodySizeThreshold) {
-			ctx2, cancel := context.WithTimeout(m.ctx, 500*time.Millisecond)
+			ctx2, cancel := context.WithTimeout(ts.ctx, 500*time.Millisecond)
 			defer cancel()
-			rb, err := m.client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: ev.RequestID})
+			rb, err := ts.client.Fetch.GetResponseBody(ctx2, &fetch.GetResponseBodyArgs{RequestID: ev.RequestID})
 			if err == nil && rb != nil {
 				if rb.Base64Encoded {
 					if b, err := base64.StdEncoding.DecodeString(rb.Body); err == nil {
@@ -379,10 +350,33 @@ func (m *Manager) buildRuleContext(ev *fetch.RequestPausedReply, stage string) r
 		}
 	}
 
-	return rules.Ctx{URL: ev.Request.URL, Method: ev.Request.Method, Headers: h, Query: q, Cookies: ck, Body: bodyText, ContentType: ctype, Stage: stage}
+	return rules.Ctx{
+		URL:         ev.Request.URL,
+		Method:      ev.Request.Method,
+		Headers:     h,
+		Query:       q,
+		Cookies:     ck,
+		Body:        bodyText,
+		ContentType: ctype,
+		Stage:       stage,
+	}
 }
 
-func (m *Manager) resolveTarget(ctx context.Context, target model.TargetID) (*devtool.Target, error) {
+// decide 构造规则上下文并进行匹配决策
+func (m *Manager) decide(ts *targetSession, ev *fetch.RequestPausedReply, stage string) *rules.Result {
+	if m.engine == nil {
+		return nil
+	}
+	ctx := m.buildRuleContext(ts, ev, stage)
+	res := m.engine.Eval(ctx)
+	if res == nil {
+		return nil
+	}
+	return res
+}
+
+// selectTarget 根据传入的 targetID 或默认策略选择目标
+func (m *Manager) selectTarget(ctx context.Context, target model.TargetID) (*devtool.Target, error) {
 	dt := devtool.New(m.devtoolsURL)
 	targets, err := dt.List(ctx)
 	if err != nil {
@@ -392,6 +386,7 @@ func (m *Manager) resolveTarget(ctx context.Context, target model.TargetID) (*de
 	if len(targets) == 0 {
 		return nil, nil
 	}
+
 	if target != "" {
 		for i := range targets {
 			if string(targets[i].ID) == string(target) {
@@ -400,29 +395,8 @@ func (m *Manager) resolveTarget(ctx context.Context, target model.TargetID) (*de
 		}
 		return nil, nil
 	}
-	return selectAutoTarget(targets), nil
-}
 
-func selectAutoTarget(targets []*devtool.Target) *devtool.Target {
-	var sel *devtool.Target
-	for i := len(targets) - 1; i >= 0; i-- {
-		if targets[i].Type != "page" {
-			continue
-		}
-		if !isUserPageURL(targets[i].URL) {
-			continue
-		}
-		sel = targets[i]
-		break
-	}
-	if sel == nil && len(targets) > 0 {
-		return targets[0]
-	}
-	return sel
-}
-
-func (m *Manager) refreshWatchers(ctx context.Context, targets []*devtool.Target) {
-	ids := make(map[model.TargetID]*devtool.Target)
+	// 默认选择第一个 page 目标，不做 URL 过滤
 	for i := range targets {
 		if targets[i] == nil {
 			continue
@@ -430,118 +404,13 @@ func (m *Manager) refreshWatchers(ctx context.Context, targets []*devtool.Target
 		if targets[i].Type != "page" {
 			continue
 		}
-		if !isUserPageURL(targets[i].URL) {
-			continue
-		}
-		id := model.TargetID(targets[i].ID)
-		if id == "" {
-			continue
-		}
-		ids[id] = targets[i]
+		return targets[i], nil
 	}
-	m.watchersMu.Lock()
-	for id, w := range m.watchers {
-		if _, ok := ids[id]; !ok {
-			w.cancel()
-			if w.conn != nil {
-				_ = w.conn.Close()
-			}
-			delete(m.watchers, id)
-		}
-	}
-	for id, t := range ids {
-		if _, ok := m.watchers[id]; ok {
-			continue
-		}
-		w, err := m.startWatcher(ctx, id, t.WebSocketDebuggerURL)
-		if err != nil {
-			m.log.Debug("创建目标可见性监听器失败", "target", string(id), "error", err)
-			continue
-		}
-		m.watchers[id] = w
-	}
-	m.watchersMu.Unlock()
+
+	return nil, nil
 }
 
-func (m *Manager) startWatcher(ctx context.Context, id model.TargetID, wsURL string) (*targetWatcher, error) {
-	wctx, cancel := context.WithCancel(context.Background())
-	conn, err := rpcc.DialContext(wctx, wsURL)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	client := cdp.NewClient(conn)
-	if err := client.Page.Enable(wctx); err != nil {
-		cancel()
-		_ = conn.Close()
-		return nil, err
-	}
-	stream, err := client.Page.LifecycleEvent(wctx)
-	if err != nil {
-		cancel()
-		_ = conn.Close()
-		return nil, err
-	}
-	w := &targetWatcher{id: id, conn: conn, client: client, cancel: cancel}
-	go func() {
-		defer stream.Close()
-		for {
-			ev, err := stream.Recv()
-			if err != nil {
-				break
-			}
-			if ev == nil {
-				continue
-			}
-			name := ev.Name
-			if name == "visible" {
-				m.onTargetVisible(id)
-			}
-		}
-		m.removeWatcher(id)
-	}()
-	return w, nil
-}
-
-func (m *Manager) onTargetVisible(id model.TargetID) {
-	if id == "" {
-		return
-	}
-	if m.mode != workspaceModeAutoFollow {
-		return
-	}
-	if m.currentTarget != "" && m.currentTarget == id {
-		return
-	}
-	if err := m.attachAndEnable(id, true); err != nil {
-		m.log.Error("根据可见性切换浏览器目标失败", "target", string(id), "error", err)
-	}
-}
-
-func (m *Manager) removeWatcher(id model.TargetID) {
-	m.watchersMu.Lock()
-	defer m.watchersMu.Unlock()
-	if w, ok := m.watchers[id]; ok {
-		w.cancel()
-		if w.conn != nil {
-			_ = w.conn.Close()
-		}
-		delete(m.watchers, id)
-	}
-}
-
-func (m *Manager) stopAllWatchers() {
-	m.watchersMu.Lock()
-	defer m.watchersMu.Unlock()
-	for id, w := range m.watchers {
-		w.cancel()
-		if w.conn != nil {
-			_ = w.conn.Close()
-		}
-		delete(m.watchers, id)
-	}
-}
-
+// ListTargets 列出当前浏览器中的所有 page 目标，并标记哪些已附加
 func (m *Manager) ListTargets(ctx context.Context) ([]model.TargetInfo, error) {
 	if m.devtoolsURL == "" {
 		return nil, fmt.Errorf("devtools url empty")
@@ -551,9 +420,16 @@ func (m *Manager) ListTargets(ctx context.Context) ([]model.TargetInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	m.targetsMu.Lock()
+	defer m.targetsMu.Unlock()
+
 	out := make([]model.TargetInfo, 0, len(targets))
 	for i := range targets {
 		if targets[i] == nil {
+			continue
+		}
+		if targets[i].Type != "page" {
 			continue
 		}
 		id := model.TargetID(targets[i].ID)
@@ -562,7 +438,7 @@ func (m *Manager) ListTargets(ctx context.Context) ([]model.TargetInfo, error) {
 			Type:      string(targets[i].Type),
 			URL:       targets[i].URL,
 			Title:     targets[i].Title,
-			IsCurrent: m.currentTarget != "" && id == m.currentTarget,
+			IsCurrent: m.targets[id] != nil, // 语义：当前会话是否已附加该目标
 			IsUser:    isUserPageURL(targets[i].URL),
 		}
 		out = append(out, info)
@@ -600,10 +476,7 @@ func (m *Manager) SetConcurrency(n int) {
 	m.pool = newWorkerPool(n)
 	if m.pool != nil && m.pool.sem != nil {
 		m.pool.setLogger(m.log)
-		if m.ctx != nil {
-			m.pool.start(m.ctx)
-		}
-		m.log.Info("并发工作池已启动", "workers", n, "queueCap", m.pool.queueCap)
+		m.log.Info("并发工作池已配置", "workers", n, "queueCap", m.pool.queueCap)
 	} else {
 		m.log.Info("并发工作池未限制，使用无界模式")
 	}
