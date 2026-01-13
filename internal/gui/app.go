@@ -60,6 +60,8 @@ func (a *App) StartSession(devToolsURL string) SessionResult {
 	a.currentSession = sid
 	// 启动事件订阅
 	go a.subscribeEvents(sid)
+	// 启动 Pending 订阅
+	go a.subscribePending(sid)
 	return SessionResult{SessionID: string(sid), Success: true}
 }
 
@@ -194,6 +196,18 @@ type PendingListResult struct {
 	Items   []model.PendingItem `json:"items"`
 	Success bool                `json:"success"`
 	Error   string              `json:"error,omitempty"`
+}
+
+// subscribePending 订阅 Pending 事件并推送到前端
+func (a *App) subscribePending(sessionID model.SessionID) {
+	ch, err := a.service.SubscribePending(sessionID)
+	if err != nil {
+		return
+	}
+	for item := range ch {
+		// 通过 Wails 事件系统推送到前端
+		runtime.EventsEmit(a.ctx, "pending-item", item)
+	}
 }
 
 // ApproveRequest 审批请求阶段

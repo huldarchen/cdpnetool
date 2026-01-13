@@ -5,7 +5,11 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSessionStore, useThemeStore } from '@/stores'
 import { RuleListEditor } from '@/components/rules'
+import { PendingPanel } from '@/components/pending'
+import { EventsPanel } from '@/components/events'
 import type { Rule, RuleSet } from '@/types/rules'
+import type { PendingItem, RewriteMutation } from '@/types/pending'
+import type { InterceptEvent } from '@/types/events'
 import { createEmptyRule, createEmptyRuleSet } from '@/types/rules'
 import { 
   Play, 
@@ -39,6 +43,9 @@ declare global {
           DisableInterception: (id: string) => Promise<{ success: boolean; error?: string }>
           LoadRules: (id: string, json: string) => Promise<{ success: boolean; error?: string }>
           GetRuleStats: (id: string) => Promise<{ stats: any; success: boolean; error?: string }>
+          ApproveRequest: (itemId: string, mutationsJson: string) => Promise<{ success: boolean; error?: string }>
+          ApproveResponse: (itemId: string, mutationsJson: string) => Promise<{ success: boolean; error?: string }>
+          Reject: (itemId: string) => Promise<{ success: boolean; error?: string }>
         }
       }
     }
@@ -61,10 +68,12 @@ function App() {
     toggleAttachedTarget,
     events,
     addEvent,
+    clearEvents,
   } = useSessionStore()
   
   const { isDark, toggle: toggleTheme } = useThemeStore()
   const [isLoading, setIsLoading] = useState(false)
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
 
   // 连接/断开会话
   const handleConnect = async () => {
@@ -164,10 +173,52 @@ function App() {
     if (window.runtime?.EventsOn) {
       // @ts-ignore
       window.runtime.EventsOn('intercept-event', (event: any) => {
-        addEvent(event)
+        // 添加 id 和 timestamp
+        const enrichedEvent: InterceptEvent = {
+          ...event,
+          id: event.id || Math.random().toString(36).slice(2),
+          timestamp: event.timestamp || Date.now(),
+        }
+        addEvent(enrichedEvent)
+      })
+      // @ts-ignore
+      window.runtime.EventsOn('pending-item', (item: PendingItem) => {
+        setPendingItems(prev => [item, ...prev])
       })
     }
   }, [addEvent])
+
+  // 审批 Pending 项
+  const handleApprovePending = async (itemId: string, stage: 'request' | 'response', mutations?: RewriteMutation) => {
+    try {
+      const mutationsJson = mutations ? JSON.stringify(mutations) : ''
+      const result = stage === 'request' 
+        ? await window.go?.gui?.App?.ApproveRequest(itemId, mutationsJson)
+        : await window.go?.gui?.App?.ApproveResponse(itemId, mutationsJson)
+      
+      if (result?.success) {
+        setPendingItems(prev => prev.filter(item => item.id !== itemId))
+      } else {
+        console.error('Approve failed:', result?.error)
+      }
+    } catch (e) {
+      console.error('Approve error:', e)
+    }
+  }
+
+  // 拒绝 Pending 项
+  const handleRejectPending = async (itemId: string) => {
+    try {
+      const result = await window.go?.gui?.App?.Reject(itemId)
+      if (result?.success) {
+        setPendingItems(prev => prev.filter(item => item.id !== itemId))
+      } else {
+        console.error('Reject failed:', result?.error)
+      }
+    } catch (e) {
+      console.error('Reject error:', e)
+    }
+  }
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
@@ -296,11 +347,15 @@ function App() {
             </TabsContent>
 
             <TabsContent value="events" className="flex-1 p-4 overflow-auto m-0">
-              <EventsPanel events={events} />
+              <EventsPanel events={events as InterceptEvent[]} onClear={clearEvents} />
             </TabsContent>
 
             <TabsContent value="pending" className="flex-1 p-4 overflow-auto m-0">
-              <PendingPanel />
+              <PendingPanel
+                items={pendingItems}
+                onApprove={handleApprovePending}
+                onReject={handleRejectPending}
+              />
             </TabsContent>
           </Tabs>
         </div>
@@ -515,45 +570,6 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
       <div className="text-xs text-muted-foreground mt-2 pt-2 border-t">
         共 {ruleSet.rules.length} 条规则 · 版本 {ruleSet.version}
       </div>
-    </div>
-  )
-}
-
-// Events 面板组件
-function EventsPanel({ events }: { events: any[] }) {
-  if (events.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        暂无拦截事件
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-1">
-      {events.map((evt, i) => (
-        <div key={i} className="flex items-center gap-2 p-2 rounded bg-muted text-sm font-mono">
-          <span className={`px-1.5 py-0.5 rounded text-xs ${
-            evt.type === 'intercepted' ? 'bg-blue-500/20 text-blue-500' :
-            evt.type === 'mutated' ? 'bg-yellow-500/20 text-yellow-500' :
-            evt.type === 'failed' ? 'bg-red-500/20 text-red-500' :
-            'bg-muted-foreground/20'
-          }`}>
-            {evt.type}
-          </span>
-          <span className="text-muted-foreground">{evt.target?.slice(0, 12)}</span>
-          {evt.rule && <span className="text-muted-foreground">rule: {evt.rule}</span>}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// Pending 面板组件
-function PendingPanel() {
-  return (
-    <div className="flex items-center justify-center h-full text-muted-foreground">
-      Pending 审批功能开发中...
     </div>
   )
 }
