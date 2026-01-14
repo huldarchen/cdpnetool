@@ -7,23 +7,48 @@ import (
 	"cdpnetool/pkg/rulespec"
 )
 
+// Service 服务接口
 type Service interface {
+	// StartSession 启动会话
 	StartSession(cfg model.SessionConfig) (model.SessionID, error)
+
+	// StopSession 停止会话
 	StopSession(id model.SessionID) error
+
+	// AttachTarget 附加目标
 	AttachTarget(id model.SessionID, target model.TargetID) error
+
+	// DetachTarget 分离目标
 	DetachTarget(id model.SessionID, target model.TargetID) error
+
+	// ListTargets 列出目标
 	ListTargets(id model.SessionID) ([]model.TargetInfo, error)
 
+	// EnableInterception 启用拦截
 	EnableInterception(id model.SessionID) error
+
+	// DisableInterception 禁用拦截
 	DisableInterception(id model.SessionID) error
 
+	// LoadRules 加载规则
 	LoadRules(id model.SessionID, rs rulespec.RuleSet) error
+
+	// GetRuleStats 获取规则统计信息
 	GetRuleStats(id model.SessionID) (model.EngineStats, error)
 
+	// SubscribeEvents 订阅事件
 	SubscribeEvents(id model.SessionID) (<-chan model.Event, error)
+
+	// SubscribePending 订阅待处理项
 	SubscribePending(id model.SessionID) (<-chan model.PendingItem, error)
+
+	// ApproveRequest 批准请求
 	ApproveRequest(itemID string, mutations rulespec.Rewrite) error
+
+	// ApproveResponse 批准响应
 	ApproveResponse(itemID string, mutations rulespec.Rewrite) error
+
+	// Reject 拒绝
 	Reject(itemID string) error
 }
 

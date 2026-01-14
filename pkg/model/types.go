@@ -1,9 +1,15 @@
 package model
 
+// SessionID 会话ID
 type SessionID string
+
+// TargetID 目标ID
 type TargetID string
+
+// RuleID 规则ID
 type RuleID string
 
+// SessionConfig 会话配置
 type SessionConfig struct {
 	DevToolsURL       string `json:"devToolsURL"`
 	Concurrency       int    `json:"concurrency"`
@@ -12,14 +18,14 @@ type SessionConfig struct {
 	ProcessTimeoutMS  int    `json:"processTimeoutMS"`
 }
 
-// 规则相关类型已迁移至 pkg/rulespec
-
+// EngineStats 引擎统计信息
 type EngineStats struct {
 	Total   int64            `json:"total"`
 	Matched int64            `json:"matched"`
 	ByRule  map[RuleID]int64 `json:"byRule"`
 }
 
+// Event 事件
 type Event struct {
 	Type       string    `json:"type"`
 	Session    SessionID `json:"session"`
@@ -33,6 +39,7 @@ type Event struct {
 	Timestamp  int64     `json:"timestamp"`
 }
 
+// PendingItem 待处理项
 type PendingItem struct {
 	ID     string   `json:"id"`
 	Stage  string   `json:"stage"`
@@ -42,6 +49,7 @@ type PendingItem struct {
 	Rule   *RuleID  `json:"rule"`
 }
 
+// TargetInfo 目标信息
 type TargetInfo struct {
 	ID        TargetID `json:"id"`
 	Type      string   `json:"type"`
@@ -51,18 +59,14 @@ type TargetInfo struct {
 	IsUser    bool     `json:"isUser"`
 }
 
-// InterceptedRequest 领域模型：被拦截的请求/响应
+// InterceptedRequest 拦截的请求
 type InterceptedRequest struct {
-	RequestID string
-	Stage     string // "request" or "response"
-	URL       string
-	Method    string
-
-	// 请求阶段
-	RequestHeaders map[string]string
-	PostData       *string
-
-	// 响应阶段
+	RequestID          string
+	Stage              string
+	URL                string
+	Method             string
+	RequestHeaders     map[string]string
+	PostData           *string
 	ResponseStatusCode *int
 	ResponseHeaders    map[string]string
 	ResponseBody       *string
