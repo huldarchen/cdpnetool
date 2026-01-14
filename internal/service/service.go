@@ -84,7 +84,7 @@ func (s *svc) StopSession(id model.SessionID) error {
 	}
 	if ses.mgr != nil {
 		_ = ses.mgr.Disable()
-		_ = ses.mgr.Detach("")
+		_ = ses.mgr.DetachAll()
 	}
 	close(ses.events)
 	close(ses.pending)

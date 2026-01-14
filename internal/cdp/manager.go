@@ -22,48 +22,24 @@ import (
 )
 
 // Manager 负责管理一个会话下的所有浏览器 page 目标
-//
-// 设计要点：
-//   - 一个 Manager 对应一个 DevTools 端点（一个浏览器实例）。
-//   - 同一会话内可以同时附加多个 page，每个 page 对应一个独立的 targetSession。
-//   - 不再自动发现 / 自动跟随前台页面，所有需要拦截的 page 由调用方显式 Attach / Detach。
-//   - 默认行为：当调用 AttachTarget 且未指定 targetID 时，自动选择第一个 Type=="page" 的目标。
-//   - 当某个 page 被用户关闭或连接异常导致拦截流终止时，自动清理对应的 targetSession。
-//
-// 这样可以在保证能力的前提下，大幅降低隐式状态和出错概率。
-
 type Manager struct {
-	devtoolsURL string
-	log         logger.Logger
-
-	// 规则与运行时配置
+	devtoolsURL       string
+	log               logger.Logger
 	engine            *rules.Engine
 	bodySizeThreshold int64
 	processTimeoutMS  int
-
-	// 并发控制（在会话维度共享）
-	pool *workerPool
-
-	// 事件通道（由 service 层创建并传入，会话级共享）
-	events  chan model.Event
-	pending chan model.PendingItem
-
-	// Pause 审批通道
-	approvalsMu sync.Mutex
-	approvals   map[string]chan *rulespec.Rewrite
-
-	// 已附加的 targets
-	targetsMu sync.Mutex
-	targets   map[model.TargetID]*targetSession
-
-	// 拦截开关（会话级）
-	stateMu sync.RWMutex
-	enabled bool
+	pool              *workerPool
+	events            chan model.Event
+	pending           chan model.PendingItem
+	approvalsMu       sync.Mutex
+	approvals         map[string]chan *rulespec.Rewrite
+	targetsMu         sync.Mutex
+	targets           map[model.TargetID]*targetSession
+	stateMu           sync.RWMutex
+	enabled           bool
 }
 
 // targetSession 表示一个已附加并可拦截的 page 目标
-// 每个目标拥有独立的 CDP 连接与上下文，但共享同一个规则引擎与 worker pool。
-
 type targetSession struct {
 	id     model.TargetID
 	conn   *rpcc.Conn
@@ -102,11 +78,6 @@ func (m *Manager) isEnabled() bool {
 }
 
 // AttachTarget 附加到指定浏览器目标并建立 CDP 会话。
-//
-// 语义：
-//   - 如果 target 为空，自动选择第一个 Type=="page" 的目标。
-//   - 如果指定的 target 已经附加，则本调用是幂等的，直接返回。
-//   - 不会影响其他已附加的目标，可以多次调用以附加多个 page。
 func (m *Manager) AttachTarget(target model.TargetID) error {
 	m.targetsMu.Lock()
 	defer m.targetsMu.Unlock()
@@ -163,19 +134,10 @@ func (m *Manager) AttachTarget(target model.TargetID) error {
 	return nil
 }
 
-// Detach 断开目标连接并释放资源。
-// target 为空时，表示断开所有已附加目标。
+// Detach 断开单个目标连接并释放资源。
 func (m *Manager) Detach(target model.TargetID) error {
 	m.targetsMu.Lock()
 	defer m.targetsMu.Unlock()
-
-	if target == "" {
-		for id, ts := range m.targets {
-			m.closeTargetSession(ts)
-			delete(m.targets, id)
-		}
-		return nil
-	}
 
 	ts, ok := m.targets[target]
 	if !ok {
@@ -183,6 +145,18 @@ func (m *Manager) Detach(target model.TargetID) error {
 	}
 	m.closeTargetSession(ts)
 	delete(m.targets, target)
+	return nil
+}
+
+// DetachAll 断开所有目标连接并释放资源。
+func (m *Manager) DetachAll() error {
+	m.targetsMu.Lock()
+	defer m.targetsMu.Unlock()
+
+	for id, ts := range m.targets {
+		m.closeTargetSession(ts)
+		delete(m.targets, id)
+	}
 	return nil
 }
 
@@ -345,7 +319,15 @@ func (m *Manager) buildRuleContext(ts *targetSession, ev *fetch.RequestPausedRep
 		if v, ok := h["content-type"]; ok {
 			ctype = v
 		}
-		if ev.Request.PostData != nil {
+		// 优先使用 PostDataEntries（新 API）
+		if len(ev.Request.PostDataEntries) > 0 {
+			for _, entry := range ev.Request.PostDataEntries {
+				if entry.Bytes != nil {
+					bodyText += *entry.Bytes
+				}
+			}
+		} else if ev.Request.PostData != nil {
+			// 向下兼容，使用已弃用的 PostData
 			bodyText = *ev.Request.PostData
 		}
 	}
@@ -439,7 +421,6 @@ func (m *Manager) ListTargets(ctx context.Context) ([]model.TargetInfo, error) {
 			URL:       targets[i].URL,
 			Title:     targets[i].Title,
 			IsCurrent: m.targets[id] != nil, // 语义：当前会话是否已附加该目标
-			IsUser:    isUserPageURL(targets[i].URL),
 		}
 		out = append(out, info)
 	}

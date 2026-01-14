@@ -80,15 +80,3 @@ func parseInt64(s string) (int64, error) {
 	}
 	return n * mul, nil
 }
-
-// isUserPageURL 判断是否为用户页面URL（http/https）
-func isUserPageURL(raw string) bool {
-	if raw == "" {
-		return false
-	}
-	url := strings.ToLower(raw)
-	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-		return true
-	}
-	return false
-}

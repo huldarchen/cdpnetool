@@ -59,7 +59,7 @@ func applyJSONPatch(doc string, ops []rulespec.JSONPatchOp) (string, bool) {
 		from := op.From
 		switch typ {
 		case string(rulespec.JSONPatchOpAdd), string(rulespec.JSONPatchOpReplace):
-			v = setByPtr(v, path, val, typ == string(rulespec.JSONPatchOpReplace))
+			v = setByPtr(v, path, val)
 		case string(rulespec.JSONPatchOpRemove):
 			v = removeByPtr(v, path)
 		case string(rulespec.JSONPatchOpCopy):
@@ -67,14 +67,14 @@ func applyJSONPatch(doc string, ops []rulespec.JSONPatchOp) (string, bool) {
 			if !ok {
 				return "", false
 			}
-			v = setByPtr(v, path, src, true)
+			v = setByPtr(v, path, src)
 		case string(rulespec.JSONPatchOpMove):
 			src, ok := getByPtr(v, from)
 			if !ok {
 				return "", false
 			}
 			v = removeByPtr(v, from)
-			v = setByPtr(v, path, src, true)
+			v = setByPtr(v, path, src)
 		case string(rulespec.JSONPatchOpTest):
 			cur, ok := getByPtr(v, path)
 			if !ok {
@@ -93,7 +93,7 @@ func applyJSONPatch(doc string, ops []rulespec.JSONPatchOp) (string, bool) {
 }
 
 // setByPtr 依据JSON Pointer设置节点值
-func setByPtr(cur any, ptr string, val any, replace bool) any {
+func setByPtr(cur any, ptr string, val any) any {
 	if ptr == "" || ptr[0] != '/' {
 		return cur
 	}

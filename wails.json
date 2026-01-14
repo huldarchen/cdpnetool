@@ -8,8 +8,8 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "",
-    "email": ""
+    "name": "hewei",
+    "email": "hemailads@163.com"
   },
   "info": {
     "companyName": "",

@@ -56,7 +56,6 @@ type TargetInfo struct {
 	URL       string   `json:"url"`
 	Title     string   `json:"title"`
 	IsCurrent bool     `json:"isCurrent"`
-	IsUser    bool     `json:"isUser"`
 }
 
 // InterceptedRequest 拦截的请求

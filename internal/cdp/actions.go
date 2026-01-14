@@ -271,7 +271,15 @@ func (m *Manager) buildRequestBody(rw *rulespec.Rewrite, ev *fetch.RequestPaused
 		return nil
 	}
 	var src string
-	if ev.Request.PostData != nil {
+	// 优先使用 PostDataEntries（新 API）
+	if len(ev.Request.PostDataEntries) > 0 {
+		for _, entry := range ev.Request.PostDataEntries {
+			if entry.Bytes != nil {
+				src += *entry.Bytes
+			}
+		}
+	} else if ev.Request.PostData != nil {
+		// 向下兼容，使用已弃用的 PostData
 		src = *ev.Request.PostData
 	}
 	if b, ok := applyBodyPatch(src, rw.Body); ok && len(b) > 0 {
