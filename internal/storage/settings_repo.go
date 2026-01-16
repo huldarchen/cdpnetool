@@ -102,12 +102,12 @@ func (r *SettingsRepo) SetTheme(theme string) error {
 	return r.Set(SettingKeyTheme, theme)
 }
 
-// GetLastRuleSetID 获取上次使用的规则集 ID
-func (r *SettingsRepo) GetLastRuleSetID() string {
-	return r.GetWithDefault(SettingKeyLastRuleSetID, "")
+// GetLastConfigID 获取上次使用的配置 ID
+func (r *SettingsRepo) GetLastConfigID() string {
+	return r.GetWithDefault(SettingKeyLastConfigID, "")
 }
 
-// SetLastRuleSetID 设置上次使用的规则集 ID
-func (r *SettingsRepo) SetLastRuleSetID(id string) error {
-	return r.Set(SettingKeyLastRuleSetID, id)
+// SetLastConfigID 设置上次使用的配置 ID
+func (r *SettingsRepo) SetLastConfigID(id string) error {
+	return r.Set(SettingKeyLastConfigID, id)
 }

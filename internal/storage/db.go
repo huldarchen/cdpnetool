@@ -99,7 +99,7 @@ func getDBPath() (string, error) {
 func (d *DB) autoMigrate() error {
 	return d.gormDB.AutoMigrate(
 		&Setting{},
-		&RuleSetRecord{},
+		&ConfigRecord{},
 		&InterceptEventRecord{},
 	)
 }

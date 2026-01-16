@@ -125,20 +125,14 @@ export interface Rule {
 
 // ==================== 配置结构 ====================
 
-// 简化的规则集结构（用于前端编辑器）
-export interface RuleSet {
-  version: string
-  rules: Rule[]
-}
-
-// 完整的配置结构
+// 配置结构（完整版）
 export interface Config {
-  id: string
-  name: string
-  version: string
-  description?: string
-  settings?: Record<string, any>
-  rules: Rule[]
+  id?: string            // 配置 ID（新建时可省略）
+  name?: string          // 配置名称（在 UI 中单独管理）
+  version: string        // 配置格式版本
+  description?: string   // 配置描述
+  settings?: Record<string, any>  // 预留设置项
+  rules: Rule[]          // 规则列表
 }
 
 // ==================== 资源类型常量 ====================
@@ -347,19 +341,9 @@ export function createEmptyRule(stage: Stage = 'request'): Rule {
   }
 }
 
-// 创建空规则集
-export function createEmptyRuleSet(): RuleSet {
-  return {
-    version: '1.0',
-    rules: []
-  }
-}
-
 // 创建空配置
 export function createEmptyConfig(): Config {
   return {
-    id: `config_${Date.now()}`,
-    name: '新配置',
     version: '1.0',
     rules: []
   }

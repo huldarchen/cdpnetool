@@ -13,20 +13,20 @@ type Setting struct {
 
 // 预定义的设置 Key
 const (
-	SettingKeyDevToolsURL   = "devtools_url"
-	SettingKeyTheme         = "theme"
-	SettingKeyWindowBounds  = "window_bounds"
-	SettingKeyLastRuleSetID = "last_ruleset_id"
+	SettingKeyDevToolsURL  = "devtools_url"
+	SettingKeyTheme        = "theme"
+	SettingKeyWindowBounds = "window_bounds"
+	SettingKeyLastConfigID = "last_config_id" // 上次使用的配置 ID
 )
 
-// RuleSetRecord 规则集表
-type RuleSetRecord struct {
+// ConfigRecord 配置表（存储规则配置）
+type ConfigRecord struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	Name        string    `gorm:"uniqueIndex;not null" json:"name"`
-	Description string    `gorm:"type:text" json:"description"` // 配置描述
-	Version     string    `json:"version"`
-	RulesJSON   string    `gorm:"type:text" json:"rulesJson"` // JSON 序列化的规则数组
-	IsActive    bool      `gorm:"default:false" json:"isActive"`
+	Description string    `gorm:"type:text" json:"description"`  // 配置描述
+	Version     string    `json:"version"`                       // 配置格式版本
+	RulesJSON   string    `gorm:"type:text" json:"rulesJson"`    // JSON 序列化的规则数组
+	IsActive    bool      `gorm:"default:false" json:"isActive"` // 是否为激活配置
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }

@@ -14,8 +14,8 @@ export function CloseBrowser() {
   return window['go']['gui']['App']['CloseBrowser']();
 }
 
-export function DeleteRuleSet(arg1) {
-  return window['go']['gui']['App']['DeleteRuleSet'](arg1);
+export function DeleteConfig(arg1) {
+  return window['go']['gui']['App']['DeleteConfig'](arg1);
 }
 
 export function DetachTarget(arg1, arg2) {
@@ -30,12 +30,12 @@ export function EnableInterception(arg1) {
   return window['go']['gui']['App']['EnableInterception'](arg1);
 }
 
-export function ExportRuleSet(arg1, arg2) {
-  return window['go']['gui']['App']['ExportRuleSet'](arg1, arg2);
+export function ExportConfig(arg1, arg2) {
+  return window['go']['gui']['App']['ExportConfig'](arg1, arg2);
 }
 
-export function GetActiveRuleSet() {
-  return window['go']['gui']['App']['GetActiveRuleSet']();
+export function GetActiveConfig() {
+  return window['go']['gui']['App']['GetActiveConfig']();
 }
 
 export function GetAllSettings() {
@@ -46,16 +46,16 @@ export function GetBrowserStatus() {
   return window['go']['gui']['App']['GetBrowserStatus']();
 }
 
+export function GetConfig(arg1) {
+  return window['go']['gui']['App']['GetConfig'](arg1);
+}
+
 export function GetCurrentSession() {
   return window['go']['gui']['App']['GetCurrentSession']();
 }
 
 export function GetEventStats() {
   return window['go']['gui']['App']['GetEventStats']();
-}
-
-export function GetRuleSet(arg1) {
-  return window['go']['gui']['App']['GetRuleSet'](arg1);
 }
 
 export function GetRuleStats(arg1) {
@@ -70,16 +70,16 @@ export function LaunchBrowser(arg1) {
   return window['go']['gui']['App']['LaunchBrowser'](arg1);
 }
 
-export function ListRuleSets() {
-  return window['go']['gui']['App']['ListRuleSets']();
+export function ListConfigs() {
+  return window['go']['gui']['App']['ListConfigs']();
 }
 
 export function ListTargets(arg1) {
   return window['go']['gui']['App']['ListTargets'](arg1);
 }
 
-export function LoadActiveRuleSetToSession() {
-  return window['go']['gui']['App']['LoadActiveRuleSetToSession']();
+export function LoadActiveConfigToSession() {
+  return window['go']['gui']['App']['LoadActiveConfigToSession']();
 }
 
 export function LoadRules(arg1, arg2) {
@@ -90,16 +90,16 @@ export function QueryEventHistory(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8
   return window['go']['gui']['App']['QueryEventHistory'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
-export function RenameRuleSet(arg1, arg2) {
-  return window['go']['gui']['App']['RenameRuleSet'](arg1, arg2);
+export function RenameConfig(arg1, arg2) {
+  return window['go']['gui']['App']['RenameConfig'](arg1, arg2);
 }
 
-export function SaveRuleSet(arg1, arg2, arg3, arg4) {
-  return window['go']['gui']['App']['SaveRuleSet'](arg1, arg2, arg3, arg4);
+export function SaveConfig(arg1, arg2, arg3, arg4) {
+  return window['go']['gui']['App']['SaveConfig'](arg1, arg2, arg3, arg4);
 }
 
-export function SetActiveRuleSet(arg1) {
-  return window['go']['gui']['App']['SetActiveRuleSet'](arg1);
+export function SetActiveConfig(arg1) {
+  return window['go']['gui']['App']['SetActiveConfig'](arg1);
 }
 
 export function SetDirty(arg1) {

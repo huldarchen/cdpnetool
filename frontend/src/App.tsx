@@ -9,9 +9,9 @@ import { useToast } from '@/hooks/use-toast'
 import { useSessionStore, useThemeStore } from '@/stores'
 import { RuleListEditor } from '@/components/rules'
 import { EventsPanel } from '@/components/events'
-import type { Rule, RuleSet } from '@/types/rules'
+import type { Rule, Config } from '@/types/rules'
 import type { InterceptEvent } from '@/types/events'
-import { createEmptyRule, createEmptyRuleSet } from '@/types/rules'
+import { createEmptyRule, createEmptyConfig } from '@/types/rules'
 import { 
   RefreshCw, 
   Moon, 
@@ -29,8 +29,8 @@ import {
   Edit3
 } from 'lucide-react'
 
-// 规则集记录类型
-interface RuleSetRecord {
+// 配置记录类型
+interface ConfigRecord {
   id: number
   name: string
   description: string
@@ -67,16 +67,16 @@ declare global {
           LaunchBrowser: (headless: boolean) => Promise<{ devToolsUrl: string; success: boolean; error?: string }>
           CloseBrowser: () => Promise<{ success: boolean; error?: string }>
           GetBrowserStatus: () => Promise<{ devToolsUrl: string; success: boolean; error?: string }>
-          // 规则集持久化 API
-          ListRuleSets: () => Promise<{ ruleSets: RuleSetRecord[]; success: boolean; error?: string }>
-          GetRuleSet: (id: number) => Promise<{ ruleSet: RuleSetRecord; success: boolean; error?: string }>
-          SaveRuleSet: (id: number, name: string, description: string, rulesJson: string) => Promise<{ ruleSet: RuleSetRecord; success: boolean; error?: string }>
-          DeleteRuleSet: (id: number) => Promise<{ success: boolean; error?: string }>
-          SetActiveRuleSet: (id: number) => Promise<{ success: boolean; error?: string }>
-          GetActiveRuleSet: () => Promise<{ ruleSet: RuleSetRecord | null; success: boolean; error?: string }>
-          RenameRuleSet: (id: number, newName: string) => Promise<{ success: boolean; error?: string }>
+          // 配置持久化 API
+          ListConfigs: () => Promise<{ configs: ConfigRecord[]; success: boolean; error?: string }>
+          GetConfig: (id: number) => Promise<{ config: ConfigRecord; success: boolean; error?: string }>
+          SaveConfig: (id: number, name: string, description: string, rulesJson: string) => Promise<{ config: ConfigRecord; success: boolean; error?: string }>
+          DeleteConfig: (id: number) => Promise<{ success: boolean; error?: string }>
+          SetActiveConfig: (id: number) => Promise<{ success: boolean; error?: string }>
+          GetActiveConfig: () => Promise<{ config: ConfigRecord | null; success: boolean; error?: string }>
+          RenameConfig: (id: number, newName: string) => Promise<{ success: boolean; error?: string }>
           SetDirty: (dirty: boolean) => Promise<void>
-          ExportRuleSet: (name: string, json: string) => Promise<OperationResult>
+          ExportConfig: (name: string, json: string) => Promise<OperationResult>
         }
       }
     }
@@ -458,12 +458,12 @@ interface RulesPanelProps {
 
 function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }: RulesPanelProps) {
   const { toast } = useToast()
-  const [ruleSet, setRuleSet] = useState<RuleSet>(createEmptyRuleSet())
+  const [ruleSet, setRuleSet] = useState<Config>(createEmptyConfig())
   const [showJson, setShowJson] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // 配置管理状态
-  const [ruleSets, setRuleSets] = useState<RuleSetRecord[]>([])
+  const [ruleSets, setRuleSets] = useState<ConfigRecord[]>([])
   const [currentRuleSetId, setCurrentRuleSetId] = useState<number>(0)
   const [currentRuleSetName, setCurrentRuleSetName] = useState<string>('默认配置')
   const [currentDescription, setCurrentDescription] = useState<string>('')
@@ -480,7 +480,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
     loadRuleSets()
       .catch(e => {
         console.error('Failed to load rule sets on mount:', e)
-        setRuleSet(createEmptyRuleSet())
+        setRuleSet(createEmptyConfig())
       })
       .finally(() => {
         setIsInitializing(false)
@@ -497,25 +497,25 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   // 加载配置列表
   const loadRuleSets = async () => {
     try {
-      if (!window.go?.gui?.App?.ListRuleSets) {
+      if (!window.go?.gui?.App?.ListConfigs) {
         console.warn('Wails bindings not ready yet')
         return
       }
       
-      const result = await window.go.gui.App.ListRuleSets()
+      const result = await window.go.gui.App.ListConfigs()
       if (result?.success) {
-        setRuleSets(result.ruleSets || [])
+        setRuleSets(result.configs || [])
         // 加载第一个配置到编辑器，但不自动设置为激活状态
         // 用户需要手动启用配置
-        if (result.ruleSets && result.ruleSets.length > 0) {
-          loadRuleSetData(result.ruleSets[0])
+        if (result.configs && result.configs.length > 0) {
+          loadRuleSetData(result.configs[0])
         } else {
-          setRuleSet(createEmptyRuleSet())
+          setRuleSet(createEmptyConfig())
         }
       }
     } catch (e) {
       console.error('Load rule sets error:', e)
-      setRuleSet(createEmptyRuleSet())
+      setRuleSet(createEmptyConfig())
     }
   }
 
@@ -544,10 +544,10 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   }, [ruleSet, currentRuleSetId, currentRuleSetName, sessionId, isLoading])
 
   // 加载规则集数据到编辑器
-  const loadRuleSetData = (record: RuleSetRecord) => {
+  const loadRuleSetData = (record: ConfigRecord) => {
     try {
       if (!record.rulesJson) {
-        setRuleSet(createEmptyRuleSet())
+        setRuleSet(createEmptyConfig())
         setCurrentRuleSetId(record.id)
         setCurrentRuleSetName(record.name)
         setCurrentDescription(record.description || '')
@@ -563,7 +563,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
         setRuleSet({ version: parsed.version || '1.0', rules: parsed.rules })
       } else {
         console.error('Invalid rules format:', parsed)
-        setRuleSet(createEmptyRuleSet())
+        setRuleSet(createEmptyConfig())
       }
       
       setCurrentRuleSetId(record.id)
@@ -572,20 +572,20 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
       updateDirty(false)
     } catch (e) {
       console.error('Parse rules error:', e)
-      setRuleSet(createEmptyRuleSet())
+      setRuleSet(createEmptyConfig())
       updateDirty(false)
     }
   }
 
   // 选择规则集
-  const handleSelectRuleSet = async (record: RuleSetRecord) => {
+  const handleSelectRuleSet = async (record: ConfigRecord) => {
     if (isDirty) {
       const confirm = window.confirm('当前规则有未保存的更改，切换规则集将丢失这些更改，是否继续？')
       if (!confirm) return
     }
     loadRuleSetData(record)
     // 设置为激活
-    await window.go?.gui?.App?.SetActiveRuleSet(record.id)
+    await window.go?.gui?.App?.SetActiveConfig(record.id)
     toast({ variant: 'success', title: `已切换到规则集: ${record.name}` })
   }
 
@@ -594,11 +594,11 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
     const name = `规则集 ${new Date().toLocaleString()}`
     try {
       const emptyRuleSet = { version: '1.0', rules: [] }
-      const result = await window.go?.gui?.App?.SaveRuleSet(0, name, '', JSON.stringify(emptyRuleSet))
-      if (result?.success && result.ruleSet) {
+      const result = await window.go?.gui?.App?.SaveConfig(0, name, '', JSON.stringify(emptyRuleSet))
+      if (result?.success && result.config) {
         await loadRuleSets()
-        loadRuleSetData(result.ruleSet)
-        await window.go?.gui?.App?.SetActiveRuleSet(result.ruleSet.id)
+        loadRuleSetData(result.config)
+        await window.go?.gui?.App?.SetActiveConfig(result.config.id)
         toast({ variant: 'success', title: '新规则集已创建' })
       }
     } catch (e) {
@@ -607,13 +607,13 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   }
 
   // 删除规则集
-  const handleDeleteRuleSet = async (id: number) => {
+  const handleDeleteConfig = async (id: number) => {
     if (ruleSets.length <= 1) {
       toast({ variant: 'destructive', title: '至少保留一个规则集' })
       return
     }
     try {
-      const result = await window.go?.gui?.App?.DeleteRuleSet(id)
+      const result = await window.go?.gui?.App?.DeleteConfig(id)
       if (result?.success) {
         await loadRuleSets()
         // 如果删除的是当前规则集，切换到第一个
@@ -621,7 +621,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
           const remaining = ruleSets.filter(r => r.id !== id)
           if (remaining.length > 0) {
             loadRuleSetData(remaining[0])
-            await window.go?.gui?.App?.SetActiveRuleSet(remaining[0].id)
+            await window.go?.gui?.App?.SetActiveConfig(remaining[0].id)
           }
         }
         toast({ variant: 'success', title: '规则集已删除' })
@@ -632,10 +632,10 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   }
 
   // 重命名规则集
-  const handleRenameRuleSet = async (id: number) => {
+  const handleRenameConfig = async (id: number) => {
     if (!newName.trim()) return
     try {
-      const result = await window.go?.gui?.App?.RenameRuleSet(id, newName.trim())
+      const result = await window.go?.gui?.App?.RenameConfig(id, newName.trim())
       if (result?.success) {
         await loadRuleSets()
         if (id === currentRuleSetId) {
@@ -651,7 +651,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   }
 
   // 启用/禁用配置
-  const handleToggleConfig = async (config: RuleSetRecord, enabled: boolean) => {
+  const handleToggleConfig = async (config: ConfigRecord, enabled: boolean) => {
     if (enabled) {
       // 启用配置
       if (!isConnected) {
@@ -694,7 +694,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
         }
         
         // 设置为激活状态
-        await window.go?.gui?.App?.SetActiveRuleSet(config.id)
+        await window.go?.gui?.App?.SetActiveConfig(config.id)
         setActiveConfigId(config.id)
         setIntercepting(true)
         await loadRuleSets()
@@ -719,7 +719,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   }
 
   // 计算配置中的规则数量
-  const getRuleCount = (config: RuleSetRecord) => {
+  const getRuleCount = (config: ConfigRecord) => {
     try {
       const parsed = JSON.parse(config.rulesJson || '[]')
       return Array.isArray(parsed) ? parsed.length : (parsed.rules?.length || 0)
@@ -749,7 +749,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
     try {
       const rulesJson = JSON.stringify(ruleSet)
       
-      const saveResult = await window.go?.gui?.App?.SaveRuleSet(
+      const saveResult = await window.go?.gui?.App?.SaveConfig(
         currentRuleSetId,
         currentRuleSetName,
         currentDescription,
@@ -761,8 +761,8 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
         return
       }
       
-      if (saveResult.ruleSet) {
-        setCurrentRuleSetId(saveResult.ruleSet.id)
+      if (saveResult.config) {
+        setCurrentRuleSetId(saveResult.config.id)
       }
       
       updateDirty(false)
@@ -785,7 +785,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   // 导出 JSON (原生对话框)
   const handleExport = async () => {
     const json = JSON.stringify(ruleSet, null, 2)
-    const result = await window.go?.gui?.App?.ExportRuleSet(currentRuleSetName || "ruleset", json)
+    const result = await window.go?.gui?.App?.ExportConfig(currentRuleSetName || "ruleset", json)
     if (result && !result.success) {
       toast({ variant: 'destructive', title: '导出失败', description: result.error })
     } else if (result && result.success) {
@@ -802,7 +802,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
     reader.onload = (event) => {
       try {
         const json = event.target?.result as string
-        const imported = JSON.parse(json) as RuleSet
+        const imported = JSON.parse(json) as Config
         if (imported.version && Array.isArray(imported.rules)) {
           setRuleSet(imported)
           updateDirty(true)
@@ -865,7 +865,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
                           autoFocus
                           onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleRenameRuleSet(config.id)
+                            if (e.key === 'Enter') handleRenameConfig(config.id)
                             if (e.key === 'Escape') { setEditingName(null); setNewName('') }
                           }}
                           onBlur={() => { setEditingName(null); setNewName('') }}
@@ -909,7 +909,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
               <button
                 className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-muted flex items-center gap-2 text-destructive disabled:opacity-50"
                 onClick={() => {
-                  handleDeleteRuleSet(contextMenu.configId)
+                  handleDeleteConfig(contextMenu.configId)
                   setContextMenu(null)
                 }}
                 disabled={ruleSets.length <= 1}

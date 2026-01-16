@@ -17,7 +17,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// App 是暴露给前端的 Wails 方法集合，负责管理会话、浏览器、规则和事件。
+// App 是暴露给前端的 Wails 方法集合，负责管理会话、浏览器、配置和事件。
 type App struct {
 	ctx            context.Context
 	log            logger.Logger
@@ -26,7 +26,7 @@ type App struct {
 	browser        *browser.Browser
 	db             *storage.DB
 	settingsRepo   *storage.SettingsRepo
-	ruleSetRepo    *storage.RuleSetRepo
+	configRepo     *storage.ConfigRepo
 	eventRepo      *storage.EventRepo
 	isDirty        bool
 }
@@ -56,7 +56,7 @@ func (a *App) Startup(ctx context.Context) {
 
 	// 初始化仓库
 	a.settingsRepo = storage.NewSettingsRepo(db)
-	a.ruleSetRepo = storage.NewRuleSetRepo(db)
+	a.configRepo = storage.NewConfigRepo(db)
 	a.eventRepo = storage.NewEventRepo(db)
 	a.log.Debug("事件仓库初始化完成")
 }
@@ -217,11 +217,11 @@ func (a *App) BeforeClose(ctx context.Context) bool {
 	return result == "否"
 }
 
-// ExportRuleSet 弹出原生保存对话框导出规则集
-func (a *App) ExportRuleSet(name, rulesJSON string) OperationResult {
+// ExportConfig 弹出原生保存对话框导出配置
+func (a *App) ExportConfig(name, rulesJSON string) OperationResult {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		DefaultFilename: name + ".json",
-		Title:           "导出规则集",
+		Title:           "导出配置",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
 		},
@@ -442,122 +442,122 @@ func (a *App) SetMultipleSettings(settingsJSON string) OperationResult {
 	return OperationResult{Success: true}
 }
 
-// RuleSetListResult 表示规则集列表结果。
-type RuleSetListResult struct {
-	RuleSets []storage.RuleSetRecord `json:"ruleSets"`
-	Success  bool                    `json:"success"`
-	Error    string                  `json:"error,omitempty"`
-}
-
-// RuleSetResult 表示单个规则集操作结果。
-type RuleSetResult struct {
-	RuleSet *storage.RuleSetRecord `json:"ruleSet"`
+// ConfigListResult 表示配置列表结果。
+type ConfigListResult struct {
+	Configs []storage.ConfigRecord `json:"configs"`
 	Success bool                   `json:"success"`
 	Error   string                 `json:"error,omitempty"`
 }
 
-// ListRuleSets 列出所有已保存的规则集。
-func (a *App) ListRuleSets() RuleSetListResult {
-	ruleSets, err := a.ruleSetRepo.List()
-	if err != nil {
-		a.log.Error("列出规则集失败", "error", err)
-		return RuleSetListResult{Success: false, Error: err.Error()}
-	}
-	return RuleSetListResult{RuleSets: ruleSets, Success: true}
+// ConfigResult 表示单个配置操作结果。
+type ConfigResult struct {
+	Config  *storage.ConfigRecord `json:"config"`
+	Success bool                  `json:"success"`
+	Error   string                `json:"error,omitempty"`
 }
 
-// GetRuleSet 根据 ID 获取指定规则集。
-func (a *App) GetRuleSet(id uint) RuleSetResult {
-	ruleSet, err := a.ruleSetRepo.GetByID(id)
+// ListConfigs 列出所有已保存的配置。
+func (a *App) ListConfigs() ConfigListResult {
+	configs, err := a.configRepo.List()
 	if err != nil {
-		a.log.Error("获取规则集失败", "id", id, "error", err)
-		return RuleSetResult{Success: false, Error: err.Error()}
+		a.log.Error("列出配置失败", "error", err)
+		return ConfigListResult{Success: false, Error: err.Error()}
 	}
-	return RuleSetResult{RuleSet: ruleSet, Success: true}
+	return ConfigListResult{Configs: configs, Success: true}
 }
 
-// SaveRuleSet 保存规则集（创建或更新），id 为 0 时创建新规则集。
-func (a *App) SaveRuleSet(id uint, name string, description string, rulesJSON string) RuleSetResult {
+// GetConfig 根据 ID 获取指定配置。
+func (a *App) GetConfig(id uint) ConfigResult {
+	config, err := a.configRepo.GetByID(id)
+	if err != nil {
+		a.log.Error("获取配置失败", "id", id, "error", err)
+		return ConfigResult{Success: false, Error: err.Error()}
+	}
+	return ConfigResult{Config: config, Success: true}
+}
+
+// SaveConfig 保存配置（创建或更新），id 为 0 时创建新配置。
+func (a *App) SaveConfig(id uint, name string, description string, rulesJSON string) ConfigResult {
 	var cfg rulespec.Config
 	if err := json.Unmarshal([]byte(rulesJSON), &cfg); err != nil {
-		a.log.Error("保存规则集 JSON 解析失败", "error", err)
-		return RuleSetResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
+		a.log.Error("保存配置 JSON 解析失败", "error", err)
+		return ConfigResult{Success: false, Error: "JSON 解析失败: " + err.Error()}
 	}
 
-	ruleSet, err := a.ruleSetRepo.SaveFromConfig(id, name, description, &cfg)
+	config, err := a.configRepo.SaveFromRulespecConfig(id, name, description, &cfg)
 	if err != nil {
-		a.log.Error("保存规则集失败", "id", id, "name", name, "error", err)
-		return RuleSetResult{Success: false, Error: err.Error()}
+		a.log.Error("保存配置失败", "id", id, "name", name, "error", err)
+		return ConfigResult{Success: false, Error: err.Error()}
 	}
 
-	a.log.Info("规则集已保存", "id", ruleSet.ID, "name", name)
-	return RuleSetResult{RuleSet: ruleSet, Success: true}
+	a.log.Info("配置已保存", "id", config.ID, "name", name)
+	return ConfigResult{Config: config, Success: true}
 }
 
-// DeleteRuleSet 删除指定 ID 的规则集。
-func (a *App) DeleteRuleSet(id uint) OperationResult {
-	if err := a.ruleSetRepo.Delete(id); err != nil {
-		a.log.Error("删除规则集失败", "id", id, "error", err)
+// DeleteConfig 删除指定 ID 的配置。
+func (a *App) DeleteConfig(id uint) OperationResult {
+	if err := a.configRepo.Delete(id); err != nil {
+		a.log.Error("删除配置失败", "id", id, "error", err)
 		return OperationResult{Success: false, Error: err.Error()}
 	}
-	a.log.Info("规则集已删除", "id", id)
+	a.log.Info("配置已删除", "id", id)
 	return OperationResult{Success: true}
 }
 
-// SetActiveRuleSet 设置指定规则集为当前激活状态。
-func (a *App) SetActiveRuleSet(id uint) OperationResult {
-	if err := a.ruleSetRepo.SetActive(id); err != nil {
-		a.log.Error("设置激活规则集失败", "id", id, "error", err)
+// SetActiveConfig 设置指定配置为当前激活状态。
+func (a *App) SetActiveConfig(id uint) OperationResult {
+	if err := a.configRepo.SetActive(id); err != nil {
+		a.log.Error("设置激活配置失败", "id", id, "error", err)
 		return OperationResult{Success: false, Error: err.Error()}
 	}
 
-	// 记住上次使用的规则集
-	if err := a.settingsRepo.SetLastRuleSetID(fmt.Sprintf("%d", id)); err != nil {
-		a.log.Warn("保存上次规则集 ID 失败", "id", id, "error", err)
+	// 记住上次使用的配置
+	if err := a.settingsRepo.SetLastConfigID(fmt.Sprintf("%d", id)); err != nil {
+		a.log.Warn("保存上次配置 ID 失败", "id", id, "error", err)
 	}
 
-	a.log.Debug("已设置激活规则集", "id", id)
+	a.log.Debug("已设置激活配置", "id", id)
 	return OperationResult{Success: true}
 }
 
-// GetActiveRuleSet 获取当前激活的规则集。
-func (a *App) GetActiveRuleSet() RuleSetResult {
-	ruleSet, err := a.ruleSetRepo.GetActive()
+// GetActiveConfig 获取当前激活的配置。
+func (a *App) GetActiveConfig() ConfigResult {
+	config, err := a.configRepo.GetActive()
 	if err != nil {
-		a.log.Error("获取激活规则集失败", "error", err)
-		return RuleSetResult{Success: false, Error: err.Error()}
+		a.log.Error("获取激活配置失败", "error", err)
+		return ConfigResult{Success: false, Error: err.Error()}
 	}
-	return RuleSetResult{RuleSet: ruleSet, Success: true}
+	return ConfigResult{Config: config, Success: true}
 }
 
-// RenameRuleSet 重命名指定的规则集。
-func (a *App) RenameRuleSet(id uint, newName string) OperationResult {
-	if err := a.ruleSetRepo.Rename(id, newName); err != nil {
-		a.log.Error("重命名规则集失败", "id", id, "newName", newName, "error", err)
+// RenameConfig 重命名指定的配置。
+func (a *App) RenameConfig(id uint, newName string) OperationResult {
+	if err := a.configRepo.Rename(id, newName); err != nil {
+		a.log.Error("重命名配置失败", "id", id, "newName", newName, "error", err)
 		return OperationResult{Success: false, Error: err.Error()}
 	}
-	a.log.Debug("规则集已重命名", "id", id, "newName", newName)
+	a.log.Debug("配置已重命名", "id", id, "newName", newName)
 	return OperationResult{Success: true}
 }
 
-// LoadActiveRuleSetToSession 加载当前激活的规则集到活跃会话。
-func (a *App) LoadActiveRuleSetToSession() OperationResult {
+// LoadActiveConfigToSession 加载当前激活的配置到活跃会话。
+func (a *App) LoadActiveConfigToSession() OperationResult {
 	if a.currentSession == "" {
 		return OperationResult{Success: false, Error: "没有活跃会话"}
 	}
 
-	ruleSet, err := a.ruleSetRepo.GetActive()
+	config, err := a.configRepo.GetActive()
 	if err != nil {
-		a.log.Error("获取激活规则集失败", "error", err)
+		a.log.Error("获取激活配置失败", "error", err)
 		return OperationResult{Success: false, Error: err.Error()}
 	}
-	if ruleSet == nil {
-		return OperationResult{Success: false, Error: "没有激活的规则集"}
+	if config == nil {
+		return OperationResult{Success: false, Error: "没有激活的配置"}
 	}
 
-	cfg, err := a.ruleSetRepo.ToConfig(ruleSet)
+	cfg, err := a.configRepo.ToRulespecConfig(config)
 	if err != nil {
-		a.log.Error("转换规则集失败", "id", ruleSet.ID, "error", err)
+		a.log.Error("转换配置失败", "id", config.ID, "error", err)
 		return OperationResult{Success: false, Error: err.Error()}
 	}
 
@@ -566,7 +566,7 @@ func (a *App) LoadActiveRuleSetToSession() OperationResult {
 		return OperationResult{Success: false, Error: err.Error()}
 	}
 
-	a.log.Info("已加载激活规则集到会话", "sessionID", a.currentSession, "ruleSetID", ruleSet.ID)
+	a.log.Info("已加载激活配置到会话", "sessionID", a.currentSession, "configID", config.ID)
 	return OperationResult{Success: true}
 }
 
