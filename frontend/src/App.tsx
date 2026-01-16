@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Switch } from '@/components/ui/switch'
 import { Toaster } from '@/components/ui/toaster'
 import { useToast } from '@/hooks/use-toast'
 import { useSessionStore, useThemeStore } from '@/stores'
@@ -12,8 +13,6 @@ import type { Rule, RuleSet } from '@/types/rules'
 import type { InterceptEvent } from '@/types/events'
 import { createEmptyRule, createEmptyRuleSet } from '@/types/rules'
 import { 
-  Play, 
-  Square, 
   RefreshCw, 
   Moon, 
   Sun,
@@ -26,12 +25,8 @@ import {
   Upload,
   Save,
   Chrome,
-  FolderOpen,
   Trash2,
-  Copy,
-  Edit3,
-  Check,
-  X
+  Edit3
 } from 'lucide-react'
 
 // 规则集记录类型
@@ -79,7 +74,6 @@ declare global {
           SetActiveRuleSet: (id: number) => Promise<{ success: boolean; error?: string }>
           GetActiveRuleSet: () => Promise<{ ruleSet: RuleSetRecord | null; success: boolean; error?: string }>
           RenameRuleSet: (id: number, newName: string) => Promise<{ success: boolean; error?: string }>
-          DuplicateRuleSet: (id: number, newName: string) => Promise<{ ruleSet: RuleSetRecord; success: boolean; error?: string }>
           SetDirty: (dirty: boolean) => Promise<void>
           ExportRuleSet: (name: string, json: string) => Promise<OperationResult>
         }
@@ -96,7 +90,6 @@ function App() {
     setCurrentSession,
     isConnected,
     setConnected,
-    isIntercepting,
     setIntercepting,
     targets,
     setTargets,
@@ -220,51 +213,6 @@ function App() {
     }
   }
 
-  // 启用/停用拦截
-  const handleToggleInterception = async () => {
-    if (!currentSessionId) return
-    
-    try {
-      if (isIntercepting) {
-        const result = await window.go?.gui?.App?.DisableInterception(currentSessionId)
-        if (result?.success) {
-          setIntercepting(false)
-          toast({
-            variant: 'success',
-            title: '拦截已停止',
-          })
-        } else {
-          toast({
-            variant: 'destructive',
-            title: '停止失败',
-            description: result?.error,
-          })
-        }
-      } else {
-        const result = await window.go?.gui?.App?.EnableInterception(currentSessionId)
-        if (result?.success) {
-          setIntercepting(true)
-          toast({
-            variant: 'success',
-            title: '拦截已启用',
-          })
-        } else {
-          toast({
-            variant: 'destructive',
-            title: '启用失败',
-            description: result?.error,
-          })
-        }
-      }
-    } catch (e) {
-      toast({
-        variant: 'destructive',
-        title: '操作错误',
-        description: String(e),
-      })
-    }
-  }
-
   // 附加/移除目标
   const handleToggleTarget = async (targetId: string) => {
     if (!currentSessionId) return
@@ -364,17 +312,22 @@ function App() {
             size="icon"
             onClick={() => refreshTargets()}
             disabled={!isConnected}
+            title="刷新目标列表"
           >
             <RefreshCw className="w-4 h-4" />
           </Button>
-          <Button 
-            onClick={handleToggleInterception}
-            variant={isIntercepting ? "destructive" : "secondary"}
-            disabled={!isConnected}
-          >
-            {isIntercepting ? <Square className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2" />}
-            {isIntercepting ? '停止拦截' : '启用拦截'}
-          </Button>
+          {/* 状态指示器 */}
+          <div className="flex items-center gap-2 text-sm">
+            <span className={`flex items-center gap-1 ${isConnected ? 'text-green-500' : 'text-muted-foreground'}`}>
+              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-muted-foreground'}`} />
+              {isConnected ? '已连接' : '未连接'}
+            </span>
+            {isConnected && (
+              <span className="text-muted-foreground">
+                · 目标 {attachedTargets.size}/{targets.length}
+              </span>
+            )}
+          </div>
           <Button variant="ghost" size="icon" onClick={toggleTheme}>
             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </Button>
@@ -382,91 +335,51 @@ function App() {
       </div>
 
       {/* 主内容区 */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* 左侧面板 - 状态 */}
-        <div className="w-64 border-r flex flex-col shrink-0">
-          <div className="p-4 border-b">
-            <h2 className="font-semibold mb-2">会话状态</h2>
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">连接:</span>
-                <span className={isConnected ? 'text-green-500' : 'text-red-500'}>
-                  {isConnected ? '● 已连接' : '○ 未连接'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">拦截:</span>
-                <span className={isIntercepting ? 'text-green-500' : 'text-muted-foreground'}>
-                  {isIntercepting ? '● 运行中' : '○ 已停止'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">目标:</span>
-                <span>{attachedTargets.size} / {targets.length}</span>
-              </div>
-            </div>
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <Tabs defaultValue="targets" className="flex-1 flex flex-col min-h-0">
+          <div className="border-b px-4">
+            <TabsList className="h-10">
+              <TabsTrigger value="targets" className="gap-2">
+                <Link2 className="w-4 h-4" />
+                Targets
+              </TabsTrigger>
+              <TabsTrigger value="rules" className="gap-2">
+                <FileJson className="w-4 h-4" />
+                Rules
+              </TabsTrigger>
+              <TabsTrigger value="events" className="gap-2">
+                <Activity className="w-4 h-4" />
+                Events
+              </TabsTrigger>
+            </TabsList>
           </div>
-          
-          <ScrollArea className="flex-1">
-            <div className="p-4">
-              <h3 className="font-medium mb-2 text-sm">最近事件</h3>
-              {events.length === 0 ? (
-                <p className="text-sm text-muted-foreground">暂无事件</p>
-              ) : (
-                <div className="space-y-1">
-                  {events.slice(0, 10).map((evt, i) => (
-                    <div key={i} className="text-xs p-1.5 rounded bg-muted truncate">
-                      <span className="text-muted-foreground">[{evt.type}]</span> {evt.target?.slice(0, 8)}
-                    </div>
-                  ))}
-                </div>
-              )}
+
+          <TabsContent value="targets" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
+            <div className="h-full overflow-auto p-4">
+              <TargetsPanel 
+                targets={targets}
+                attachedTargets={attachedTargets}
+                onToggle={handleToggleTarget}
+                isConnected={isConnected}
+              />
             </div>
-          </ScrollArea>
-        </div>
+          </TabsContent>
 
-        {/* 右侧主区域 */}
-        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          <Tabs defaultValue="targets" className="flex-1 flex flex-col min-h-0">
-            <div className="border-b px-4">
-              <TabsList className="h-10">
-                <TabsTrigger value="targets" className="gap-2">
-                  <Link2 className="w-4 h-4" />
-                  Targets
-                </TabsTrigger>
-                <TabsTrigger value="rules" className="gap-2">
-                  <FileJson className="w-4 h-4" />
-                  Rules
-                </TabsTrigger>
-                <TabsTrigger value="events" className="gap-2">
-                  <Activity className="w-4 h-4" />
-                  Events
-                </TabsTrigger>
-              </TabsList>
+          <TabsContent value="rules" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
+            <RulesPanel 
+              sessionId={currentSessionId}
+              isConnected={isConnected}
+              attachedTargets={attachedTargets}
+              setIntercepting={setIntercepting}
+            />
+          </TabsContent>
+
+          <TabsContent value="events" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
+            <div className="h-full overflow-auto p-4">
+              <EventsPanel events={events as InterceptEvent[]} onClear={clearEvents} />
             </div>
-
-            <TabsContent value="targets" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
-              <div className="h-full overflow-auto p-4">
-                <TargetsPanel 
-                  targets={targets}
-                  attachedTargets={attachedTargets}
-                  onToggle={handleToggleTarget}
-                  isConnected={isConnected}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="rules" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
-              <RulesPanel sessionId={currentSessionId} />
-            </TabsContent>
-
-            <TabsContent value="events" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
-              <div className="h-full overflow-auto p-4">
-                <EventsPanel events={events as InterceptEvent[]} onClear={clearEvents} />
-              </div>
-            </TabsContent>
-          </Tabs>
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* 底部状态栏 */}
@@ -535,29 +448,36 @@ function TargetsPanel({
 }
 
 // Rules 面板组件（可视化编辑器 + 规则集管理）
-function RulesPanel({ sessionId }: { sessionId: string | null }) {
+interface RulesPanelProps {
+  sessionId: string | null
+  isConnected: boolean
+  attachedTargets: Set<string>
+  setIntercepting: (intercepting: boolean) => void
+}
+
+function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }: RulesPanelProps) {
+  const { toast } = useToast()
   const [ruleSet, setRuleSet] = useState<RuleSet>(createEmptyRuleSet())
-  const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' })
   const [showJson, setShowJson] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  // 新增：规则集管理状态
+  // 配置管理状态
   const [ruleSets, setRuleSets] = useState<RuleSetRecord[]>([])
   const [currentRuleSetId, setCurrentRuleSetId] = useState<number>(0)
-  const [currentRuleSetName, setCurrentRuleSetName] = useState<string>('默认规则集')
+  const [currentRuleSetName, setCurrentRuleSetName] = useState<string>('默认配置')
+  const [activeConfigId, setActiveConfigId] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [showRuleSetManager, setShowRuleSetManager] = useState(false)
   const [editingName, setEditingName] = useState<number | null>(null)
   const [newName, setNewName] = useState('')
   const [isInitializing, setIsInitializing] = useState(true)
   const [isDirty, setIsDirty] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; configId: number } | null>(null)
 
-  // 组件挂载时加载规则集列表和激活的规则集
+  // 组件挂载时加载配置列表
   useEffect(() => {
     loadRuleSets()
       .catch(e => {
         console.error('Failed to load rule sets on mount:', e)
-        // 如果加载失败，至少确保有一个空的规则集
         setRuleSet(createEmptyRuleSet())
       })
       .finally(() => {
@@ -565,10 +485,16 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
       })
   }, [])
 
-  // 加载规则集列表
+  // 点击其他地方关闭右键菜单
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null)
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [])
+
+  // 加载配置列表
   const loadRuleSets = async () => {
     try {
-      // 检查 window.go 是否存在
       if (!window.go?.gui?.App?.ListRuleSets) {
         console.warn('Wails bindings not ready yet')
         return
@@ -577,15 +503,14 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
       const result = await window.go.gui.App.ListRuleSets()
       if (result?.success) {
         setRuleSets(result.ruleSets || [])
-        // 查找激活的规则集
+        // 查找激活的配置
         const activeResult = await window.go.gui.App.GetActiveRuleSet()
         if (activeResult?.success && activeResult.ruleSet) {
+          setActiveConfigId(activeResult.ruleSet.id)
           loadRuleSetData(activeResult.ruleSet)
         } else if (result.ruleSets && result.ruleSets.length > 0) {
-          // 如果没有激活的，加载第一个
           loadRuleSetData(result.ruleSets[0])
         } else {
-          // 如果没有任何规则集，创建一个默认的
           setRuleSet(createEmptyRuleSet())
         }
       }
@@ -612,7 +537,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault()
-        handleSaveAndApply()
+        handleSave()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -660,8 +585,7 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
     loadRuleSetData(record)
     // 设置为激活
     await window.go?.gui?.App?.SetActiveRuleSet(record.id)
-    setShowRuleSetManager(false)
-    showStatusMessage('success', `已切换到规则集: ${record.name}`)
+    toast({ variant: 'success', title: `已切换到规则集: ${record.name}` })
   }
 
   // 创建新规则集
@@ -674,17 +598,17 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
         await loadRuleSets()
         loadRuleSetData(result.ruleSet)
         await window.go?.gui?.App?.SetActiveRuleSet(result.ruleSet.id)
-        showStatusMessage('success', '新规则集已创建')
+        toast({ variant: 'success', title: '新规则集已创建' })
       }
     } catch (e) {
-      showStatusMessage('error', '创建失败: ' + String(e))
+      toast({ variant: 'destructive', title: '创建失败', description: String(e) })
     }
   }
 
   // 删除规则集
   const handleDeleteRuleSet = async (id: number) => {
     if (ruleSets.length <= 1) {
-      showStatusMessage('error', '至少保留一个规则集')
+      toast({ variant: 'destructive', title: '至少保留一个规则集' })
       return
     }
     try {
@@ -699,10 +623,10 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
             await window.go?.gui?.App?.SetActiveRuleSet(remaining[0].id)
           }
         }
-        showStatusMessage('success', '规则集已删除')
+        toast({ variant: 'success', title: '规则集已删除' })
       }
     } catch (e) {
-      showStatusMessage('error', '删除失败: ' + String(e))
+      toast({ variant: 'destructive', title: '删除失败', description: String(e) })
     }
   }
 
@@ -718,24 +642,81 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
         }
         setEditingName(null)
         setNewName('')
-        showStatusMessage('success', '已重命名')
+        toast({ variant: 'success', title: '已重命名' })
       }
     } catch (e) {
-      showStatusMessage('error', '重命名失败: ' + String(e))
+      toast({ variant: 'destructive', title: '重命名失败', description: String(e) })
     }
   }
 
-  // 复制规则集
-  const handleDuplicateRuleSet = async (id: number, originalName: string) => {
-    try {
-      const result = await window.go?.gui?.App?.DuplicateRuleSet(id, `${originalName} (副本)`)
-      if (result?.success) {
-        await loadRuleSets()
-        showStatusMessage('success', '规则集已复制')
+  // 启用/禁用配置
+  const handleToggleConfig = async (config: RuleSetRecord, enabled: boolean) => {
+    if (enabled) {
+      // 启用配置
+      if (!isConnected) {
+        toast({ variant: 'destructive', title: '请先连接到浏览器' })
+        return
       }
-    } catch (e) {
-      showStatusMessage('error', '复制失败: ' + String(e))
+      if (attachedTargets.size === 0) {
+        toast({ variant: 'destructive', title: '请先在 Targets 标签页附加至少一个目标' })
+        return
+      }
+      
+      try {
+        // 加载规则到会话
+        const rulesJson = config.rulesJson || JSON.stringify({ version: '2.0', rules: [] })
+        const loadResult = await window.go?.gui?.App?.LoadRules(sessionId!, rulesJson)
+        if (!loadResult?.success) {
+          toast({ variant: 'destructive', title: '加载规则失败', description: loadResult?.error })
+          return
+        }
+        
+        // 启用拦截
+        const enableResult = await window.go?.gui?.App?.EnableInterception(sessionId!)
+        if (!enableResult?.success) {
+          toast({ variant: 'destructive', title: '启用拦截失败', description: enableResult?.error })
+          return
+        }
+        
+        // 设置为激活状态
+        await window.go?.gui?.App?.SetActiveRuleSet(config.id)
+        setActiveConfigId(config.id)
+        setIntercepting(true)
+        await loadRuleSets()
+        
+        toast({ variant: 'success', title: `配置「${config.name}」已启用` })
+      } catch (e) {
+        toast({ variant: 'destructive', title: '启用失败', description: String(e) })
+      }
+    } else {
+      // 禁用配置
+      try {
+        if (sessionId) {
+          await window.go?.gui?.App?.DisableInterception(sessionId)
+        }
+        setActiveConfigId(null)
+        setIntercepting(false)
+        toast({ variant: 'success', title: '拦截已停止' })
+      } catch (e) {
+        toast({ variant: 'destructive', title: '停止失败', description: String(e) })
+      }
     }
+  }
+
+  // 计算配置中的规则数量
+  const getRuleCount = (config: RuleSetRecord) => {
+    try {
+      const parsed = JSON.parse(config.rulesJson || '[]')
+      return Array.isArray(parsed) ? parsed.length : (parsed.rules?.length || 0)
+    } catch {
+      return 0
+    }
+  }
+
+  // 右键菜单
+  const handleContextMenu = (e: React.MouseEvent, configId: number) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, configId })
   }
 
   // 添加新规则
@@ -747,19 +728,12 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
     updateDirty(true)
   }
 
-  // 显示状态消息
-  const showStatusMessage = (type: 'success' | 'error', message: string) => {
-    setStatus({ type, message })
-    setTimeout(() => setStatus({ type: null, message: '' }), 3000)
-  }
-
-  // 保存并应用规则（持久化 + 加载到会话）
-  const handleSaveAndApply = async () => {
+  // 保存配置
+  const handleSave = async () => {
     setIsLoading(true)
     try {
       const rulesJson = JSON.stringify(ruleSet)
       
-      // 1. 保存到数据库
       const saveResult = await window.go?.gui?.App?.SaveRuleSet(
         currentRuleSetId,
         currentRuleSetName,
@@ -767,33 +741,26 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
       )
       
       if (!saveResult?.success) {
-        showStatusMessage('error', saveResult?.error || '保存失败')
+        toast({ variant: 'destructive', title: '保存失败', description: saveResult?.error })
         return
       }
       
-      // 更新当前规则集ID
       if (saveResult.ruleSet) {
         setCurrentRuleSetId(saveResult.ruleSet.id)
-        await window.go?.gui?.App?.SetActiveRuleSet(saveResult.ruleSet.id)
       }
       
       updateDirty(false)
-
-      // 2. 如果有会话，加载到会话
-      if (sessionId) {
-        const loadResult = await window.go?.gui?.App?.LoadRules(sessionId, rulesJson)
-        if (loadResult?.success) {
-          showStatusMessage('success', `已保存并应用 ${ruleSet.rules.length} 条规则`)
-        } else {
-          showStatusMessage('success', `已保存 ${ruleSet.rules.length} 条规则（应用失败）`)
-        }
-      } else {
-        showStatusMessage('success', `已保存 ${ruleSet.rules.length} 条规则`)
-      }
-      
       await loadRuleSets()
+      
+      // 如果当前配置是激活状态，重新加载规则到会话
+      if (currentRuleSetId === activeConfigId && sessionId) {
+        await window.go?.gui?.App?.LoadRules(sessionId, rulesJson)
+        toast({ variant: 'success', title: `已保存并更新 ${ruleSet.rules.length} 条规则` })
+      } else {
+        toast({ variant: 'success', title: `已保存 ${ruleSet.rules.length} 条规则` })
+      }
     } catch (e) {
-      showStatusMessage('error', String(e))
+      toast({ variant: 'destructive', title: '保存失败', description: String(e) })
     } finally {
       setIsLoading(false)
     }
@@ -804,9 +771,9 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
     const json = JSON.stringify(ruleSet, null, 2)
     const result = await window.go?.gui?.App?.ExportRuleSet(currentRuleSetName || "ruleset", json)
     if (result && !result.success) {
-      showStatusMessage('error', result.error || "导出失败")
+      toast({ variant: 'destructive', title: '导出失败', description: result.error })
     } else if (result && result.success) {
-      showStatusMessage('success', '规则集导出成功')
+      toast({ variant: 'success', title: '规则集导出成功' })
     }
   }
 
@@ -823,12 +790,12 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
         if (imported.version && Array.isArray(imported.rules)) {
           setRuleSet(imported)
           updateDirty(true)
-          showStatusMessage('success', `导入成功，共 ${imported.rules.length} 条规则（请点保存以持久化）`)
+          toast({ variant: 'success', title: `导入成功，共 ${imported.rules.length} 条规则（请点保存以持久化）` })
         } else {
-          showStatusMessage('error', 'JSON 格式不正确')
+          toast({ variant: 'destructive', title: 'JSON 格式不正确' })
         }
       } catch {
-        showStatusMessage('error', 'JSON 解析失败')
+        toast({ variant: 'destructive', title: 'JSON 解析失败' })
       }
     }
     reader.readAsText(file)
@@ -836,197 +803,182 @@ function RulesPanel({ sessionId }: { sessionId: string | null }) {
   }
 
   return (
-    <div className="flex-1 flex flex-col p-4 min-h-0">
+    <div className="flex-1 flex min-h-0">
       {/* 初始化加载状态 */}
       {isInitializing ? (
-        <div className="flex items-center justify-center h-full text-muted-foreground">
+        <div className="flex items-center justify-center w-full text-muted-foreground">
           <div className="text-center">
             <div className="text-lg mb-2">加载中...</div>
-            <div className="text-sm">正在初始化规则编辑器</div>
+            <div className="text-sm">正在初始化配置编辑器</div>
           </div>
         </div>
       ) : (
         <>
-      {/* 工具栏 - 第一行：规则集选择 */}
-      <div className="flex items-center gap-2 mb-2 shrink-0">
-          <Button variant="outline" size="sm" onClick={() => setShowRuleSetManager(!showRuleSetManager)} className="gap-1">
-            <FolderOpen className="w-4 h-4" />
-            <div className="flex items-center gap-1">
-              {currentRuleSetName || '选择规则集'}
-              {isDirty && <div className="w-2 h-2 rounded-full bg-primary animate-pulse" title="有未保存更改" />}
+          {/* 左侧配置列表 */}
+          <div className="w-60 border-r flex flex-col shrink-0">
+            <div className="p-3 border-b flex items-center justify-between">
+              <span className="font-medium text-sm">配置列表</span>
+              <Button size="sm" variant="ghost" onClick={handleCreateRuleSet} title="新建配置">
+                <Plus className="w-4 h-4" />
+              </Button>
             </div>
-          </Button>
-        <span className="text-xs text-muted-foreground">
-          {ruleSets.length} 个规则集
-        </span>
-      </div>
-
-      {/* 规则集管理面板 */}
-      {showRuleSetManager && (
-        <div className="mb-4 p-3 border rounded-lg bg-muted/30 shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">规则集管理</span>
-            <Button size="sm" variant="outline" onClick={handleCreateRuleSet}>
-              <Plus className="w-3 h-3 mr-1" />
-              新建
-            </Button>
-          </div>
-          <ScrollArea className="h-40">
-            <div className="space-y-1">
-              {ruleSets.map((rs) => (
-                <div
-                  key={rs.id}
-                  className={`flex items-center gap-2 p-2 rounded text-sm hover:bg-muted transition-colors ${
-                    rs.id === currentRuleSetId ? 'bg-primary/10 border border-primary/30' : ''
-                  }`}
-                >
-                  {editingName === rs.id ? (
-                    <div className="flex-1 flex items-center gap-1">
-                      <Input
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        className="h-6 text-sm"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleRenameRuleSet(rs.id)
-                          if (e.key === 'Escape') { setEditingName(null); setNewName('') }
-                        }}
-                      />
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleRenameRuleSet(rs.id)}>
-                        <Check className="w-3 h-3" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => { setEditingName(null); setNewName('') }}>
-                        <X className="w-3 h-3" />
-                      </Button>
+            <ScrollArea className="flex-1">
+              <div className="p-2 space-y-1">
+                {ruleSets.map((config) => (
+                  <div
+                    key={config.id}
+                    className={`flex items-center gap-2 p-2 rounded-md cursor-pointer transition-colors ${
+                      config.id === currentRuleSetId 
+                        ? 'bg-primary/10 border border-primary/30' 
+                        : 'hover:bg-muted'
+                    }`}
+                    onClick={() => handleSelectRuleSet(config)}
+                    onContextMenu={(e) => handleContextMenu(e, config.id)}
+                  >
+                    <Switch
+                      checked={config.id === activeConfigId}
+                      onCheckedChange={(checked) => handleToggleConfig(config, checked)}
+                      disabled={!isConnected && config.id !== activeConfigId}
+                    />
+                    <div className="flex-1 min-w-0">
+                      {editingName === config.id ? (
+                        <Input
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          className="h-6 text-sm"
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRenameRuleSet(config.id)
+                            if (e.key === 'Escape') { setEditingName(null); setNewName('') }
+                          }}
+                          onBlur={() => { setEditingName(null); setNewName('') }}
+                        />
+                      ) : (
+                        <>
+                          <div className="text-sm font-medium truncate">{config.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {getRuleCount(config)} 条规则
+                            {config.id === activeConfigId && <span className="ml-1 text-green-500">· 运行中</span>}
+                          </div>
+                        </>
+                      )}
                     </div>
-                  ) : (
-                    <>
-                      <span
-                        className="flex-1 cursor-pointer truncate"
-                        onClick={() => handleSelectRuleSet(rs)}
-                      >
-                        {rs.name}
-                        {rs.isActive && <span className="ml-1 text-xs text-primary">(激活)</span>}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {(() => {
-                          try {
-                            const parsed = JSON.parse(rs.rulesJson || '[]')
-                            const count = Array.isArray(parsed) ? parsed.length : (parsed.rules?.length || 0)
-                            return `${count} 规则`
-                          } catch {
-                            return '0 规则'
-                          }
-                        })()}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 w-6 p-0"
-                        onClick={() => { setEditingName(rs.id); setNewName(rs.name) }}
-                      >
-                        <Edit3 className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 w-6 p-0"
-                        onClick={() => handleDuplicateRuleSet(rs.id, rs.name)}
-                      >
-                        <Copy className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 w-6 p-0 text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteRuleSet(rs.id)}
-                        disabled={ruleSets.length <= 1}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </>
-                  )}
-                </div>
-              ))}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+
+          {/* 右键菜单 */}
+          {contextMenu && (
+            <div
+              className="fixed z-50 min-w-32 bg-popover border rounded-md shadow-md p-1"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <button
+                className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-muted flex items-center gap-2"
+                onClick={() => {
+                  const config = ruleSets.find(r => r.id === contextMenu.configId)
+                  if (config) {
+                    setEditingName(config.id)
+                    setNewName(config.name)
+                  }
+                  setContextMenu(null)
+                }}
+              >
+                <Edit3 className="w-4 h-4" />
+                重命名
+              </button>
+              <button
+                className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-muted flex items-center gap-2 text-destructive disabled:opacity-50"
+                onClick={() => {
+                  handleDeleteRuleSet(contextMenu.configId)
+                  setContextMenu(null)
+                }}
+                disabled={ruleSets.length <= 1}
+              >
+                <Trash2 className="w-4 h-4" />
+                删除
+              </button>
             </div>
-          </ScrollArea>
-        </div>
-      )}
+          )}
 
-      {/* 工具栏 - 第二行：规则操作 */}
-      <div className="flex items-center justify-between mb-4 gap-2 shrink-0">
-        <div className="flex items-center gap-2">
-          <Button onClick={handleAddRule} size="sm">
-            <Plus className="w-4 h-4 mr-1" />
-            添加规则
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowJson(!showJson)}>
-            <FileJson className="w-4 h-4 mr-1" />
-            {showJson ? '可视化' : 'JSON'}
-          </Button>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            onChange={handleImport}
-            className="hidden"
-          />
-          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="w-4 h-4 mr-1" />
-            导入
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-1" />
-            导出
-          </Button>
-          <Button 
-            size="sm" 
-            onClick={handleSaveAndApply} 
-            disabled={isLoading}
-          >
-            <Save className="w-4 h-4 mr-1" />
-            {isLoading ? '保存中...' : '保存并应用'}
-          </Button>
-        </div>
-      </div>
+          {/* 右侧配置详情 */}
+          <div className="flex-1 flex flex-col min-h-0 p-4">
+            {/* 配置信息栏 */}
+            <div className="flex items-center gap-4 mb-4 pb-3 border-b shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">配置名称:</span>
+                <Input
+                  value={currentRuleSetName}
+                  onChange={(e) => {
+                    setCurrentRuleSetName(e.target.value)
+                    updateDirty(true)
+                  }}
+                  className="w-48 h-8"
+                />
+                {isDirty && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" title="有未保存更改" />}
+              </div>
+              <div className="flex-1" />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleImport}
+                className="hidden"
+              />
+              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="w-4 h-4 mr-1" />
+                导入
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExport}>
+                <Download className="w-4 h-4 mr-1" />
+                导出
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={isLoading}>
+                <Save className="w-4 h-4 mr-1" />
+                {isLoading ? '保存中...' : '保存'}
+              </Button>
+            </div>
 
-      {/* 状态提示 */}
-      {status.type && (
-        <div className={`p-2 rounded text-sm mb-4 shrink-0 ${
-          status.type === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-        }`}>
-          {status.message}
-        </div>
-      )}
+            {/* 规则工具栏 */}
+            <div className="flex items-center gap-2 mb-4 shrink-0">
+              <Button onClick={handleAddRule} size="sm">
+                <Plus className="w-4 h-4 mr-1" />
+                添加规则
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowJson(!showJson)}>
+                <FileJson className="w-4 h-4 mr-1" />
+                {showJson ? '可视化' : 'JSON'}
+              </Button>
+              <div className="flex-1" />
+              <span className="text-xs text-muted-foreground">
+                共 {ruleSet.rules.length} 条规则
+              </span>
+            </div>
 
-      {/* 规则编辑区 */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        {showJson ? (
-          <textarea
-            value={JSON.stringify(ruleSet, null, 2)}
-            onChange={(e) => {
-              try {
-                setRuleSet(JSON.parse(e.target.value))
-                updateDirty(true)
-              } catch {}
-            }}
-            className="w-full h-full p-3 rounded-md border bg-background font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-        ) : (
-          <RuleListEditor
-            rules={ruleSet.rules}
-            onChange={handleRulesChange}
-          />
-        )}
-      </div>
-
-      {/* 规则计数 */}
-      <div className="text-xs text-muted-foreground mt-2 pt-2 border-t shrink-0">
-        共 {ruleSet.rules.length} 条规则 · 版本 {ruleSet.version} · 规则集: {currentRuleSetName}
-      </div>
+            {/* 规则编辑区 */}
+            <div className="flex-1 min-h-0 overflow-auto">
+              {showJson ? (
+                <textarea
+                  value={JSON.stringify(ruleSet, null, 2)}
+                  onChange={(e) => {
+                    try {
+                      setRuleSet(JSON.parse(e.target.value))
+                      updateDirty(true)
+                    } catch {}
+                  }}
+                  className="w-full h-full p-3 rounded-md border bg-background font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              ) : (
+                <RuleListEditor
+                  rules={ruleSet.rules}
+                  onChange={handleRulesChange}
+                />
+              )}
+            </div>
+          </div>
         </>
       )}
     </div>

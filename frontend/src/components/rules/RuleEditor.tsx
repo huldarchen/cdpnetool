@@ -4,7 +4,7 @@ import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { ChevronDown, ChevronUp, Trash2, Copy, GripVertical, Power, PowerOff } from 'lucide-react'
+import { ChevronDown, ChevronUp, Trash2, GripVertical, Power, PowerOff } from 'lucide-react'
 import { ConditionGroup } from './ConditionEditor'
 import { ActionsEditor } from './ActionEditor'
 import type { Rule, Stage, Match, Action, Condition } from '@/types/rules'
@@ -14,7 +14,6 @@ interface RuleEditorProps {
   rule: Rule
   onChange: (rule: Rule) => void
   onRemove: () => void
-  onDuplicate: () => void
   isExpanded?: boolean
   onToggleExpand?: () => void
 }
@@ -23,7 +22,6 @@ export function RuleEditor({
   rule,
   onChange,
   onRemove,
-  onDuplicate,
   isExpanded = true,
   onToggleExpand
 }: RuleEditorProps) {
@@ -109,9 +107,6 @@ export function RuleEditor({
         </div>
 
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); onDuplicate() }}>
-            <Copy className="w-4 h-4" />
-          </Button>
           <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); onRemove() }}>
             <Trash2 className="w-4 h-4" />
           </Button>
@@ -229,19 +224,6 @@ export function RuleListEditor({ rules, onChange }: RuleListEditorProps) {
     onChange(rules.filter((_, i) => i !== index))
   }
 
-  const duplicateRule = (index: number) => {
-    const rule = rules[index]
-    const newRule: Rule = {
-      ...JSON.parse(JSON.stringify(rule)),
-      id: `${rule.id}_copy_${Date.now()}`,
-      name: `${rule.name} (副本)`
-    }
-    const newRules = [...rules]
-    newRules.splice(index + 1, 0, newRule)
-    onChange(newRules)
-    setExpandedRules(new Set([...expandedRules, newRule.id]))
-  }
-
   // 按优先级从大到小排序展示
   const sortedRules = [...rules].sort((a, b) => b.priority - a.priority)
 
@@ -255,7 +237,6 @@ export function RuleListEditor({ rules, onChange }: RuleListEditorProps) {
             rule={rule}
             onChange={(r) => updateRule(originalIndex, r)}
             onRemove={() => removeRule(originalIndex)}
-            onDuplicate={() => duplicateRule(originalIndex)}
             isExpanded={expandedRules.has(rule.id)}
             onToggleExpand={() => toggleExpand(rule.id)}
           />

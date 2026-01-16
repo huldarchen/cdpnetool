@@ -26,10 +26,6 @@ export function DisableInterception(arg1) {
   return window['go']['gui']['App']['DisableInterception'](arg1);
 }
 
-export function DuplicateRuleSet(arg1, arg2) {
-  return window['go']['gui']['App']['DuplicateRuleSet'](arg1, arg2);
-}
-
 export function EnableInterception(arg1) {
   return window['go']['gui']['App']['EnableInterception'](arg1);
 }

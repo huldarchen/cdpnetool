@@ -14,8 +14,6 @@ export function DetachTarget(arg1:string,arg2:string):Promise<gui.OperationResul
 
 export function DisableInterception(arg1:string):Promise<gui.OperationResult>;
 
-export function DuplicateRuleSet(arg1:number,arg2:string):Promise<gui.RuleSetResult>;
-
 export function EnableInterception(arg1:string):Promise<gui.OperationResult>;
 
 export function ExportRuleSet(arg1:string,arg2:string):Promise<gui.OperationResult>;

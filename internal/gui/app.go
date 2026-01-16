@@ -540,17 +540,6 @@ func (a *App) RenameRuleSet(id uint, newName string) OperationResult {
 	return OperationResult{Success: true}
 }
 
-// DuplicateRuleSet 复制指定规则集并以新名称保存。
-func (a *App) DuplicateRuleSet(id uint, newName string) RuleSetResult {
-	ruleSet, err := a.ruleSetRepo.Duplicate(id, newName)
-	if err != nil {
-		a.log.Error("复制规则集失败", "id", id, "newName", newName, "error", err)
-		return RuleSetResult{Success: false, Error: err.Error()}
-	}
-	a.log.Info("规则集已复制", "sourceID", id, "newID", ruleSet.ID, "newName", newName)
-	return RuleSetResult{RuleSet: ruleSet, Success: true}
-}
-
 // LoadActiveRuleSetToSession 加载当前激活的规则集到活跃会话。
 func (a *App) LoadActiveRuleSetToSession() OperationResult {
 	if a.currentSession == "" {

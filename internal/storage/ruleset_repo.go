@@ -165,25 +165,3 @@ func (r *RuleSetRepo) Rename(id uint, newName string) error {
 		"updated_at": time.Now(),
 	}).Error
 }
-
-// Duplicate 复制规则集
-func (r *RuleSetRepo) Duplicate(id uint, newName string) (*RuleSetRecord, error) {
-	original, err := r.GetByID(id)
-	if err != nil {
-		return nil, err
-	}
-
-	record := &RuleSetRecord{
-		Name:      newName,
-		Version:   original.Version,
-		RulesJSON: original.RulesJSON,
-		IsActive:  false,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	if err := r.db.GormDB().Create(record).Error; err != nil {
-		return nil, err
-	}
-	return record, nil
-}
