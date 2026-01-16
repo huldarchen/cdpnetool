@@ -125,6 +125,9 @@ export interface Rule {
 
 // ==================== 配置结构 ====================
 
+// 配置版本常量
+export const DEFAULT_CONFIG_VERSION = '1.0'
+
 // 配置结构（完整版）
 export interface Config {
   id?: string            // 配置 ID（新建时可省略）
@@ -133,6 +136,14 @@ export interface Config {
   description?: string   // 配置描述
   settings?: Record<string, any>  // 预留设置项
   rules: Rule[]          // 规则列表
+}
+
+// 创建空配置
+export function createEmptyConfig(): Config {
+  return {
+    version: DEFAULT_CONFIG_VERSION,
+    rules: []
+  }
 }
 
 // ==================== 资源类型常量 ====================
@@ -338,14 +349,6 @@ export function createEmptyRule(stage: Stage = 'request'): Rule {
       allOf: [createEmptyCondition('urlPrefix')]
     },
     actions: []
-  }
-}
-
-// 创建空配置
-export function createEmptyConfig(): Config {
-  return {
-    version: '1.0',
-    rules: []
   }
 }
 

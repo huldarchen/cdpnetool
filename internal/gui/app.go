@@ -476,6 +476,55 @@ func (a *App) GetConfig(id uint) ConfigResult {
 	return ConfigResult{Config: config, Success: true}
 }
 
+// NewConfigResult 表示创建新配置的结果（含完整 JSON）。
+type NewConfigResult struct {
+	Config     *storage.ConfigRecord `json:"config"`
+	ConfigJSON string                `json:"configJson"` // 完整的 rulespec.Config JSON
+	Success    bool                  `json:"success"`
+	Error      string                `json:"error,omitempty"`
+}
+
+// CreateNewConfig 创建一个新的空配置（含 UUID）并保存到数据库。
+func (a *App) CreateNewConfig(name string) NewConfigResult {
+	// 使用 rulespec.NewConfig 创建带 UUID 的标准配置
+	cfg := rulespec.NewConfig(name)
+
+	// 序列化配置 JSON
+	configJSON, err := json.Marshal(cfg)
+	if err != nil {
+		a.log.Error("序列化配置失败", "error", err)
+		return NewConfigResult{Success: false, Error: err.Error()}
+	}
+
+	// 保存到数据库
+	config, err := a.configRepo.SaveFromRulespecConfig(0, name, "", cfg)
+	if err != nil {
+		a.log.Error("创建配置失败", "name", name, "error", err)
+		return NewConfigResult{Success: false, Error: err.Error()}
+	}
+
+	a.log.Info("新配置已创建", "id", config.ID, "name", name, "configId", cfg.ID)
+	return NewConfigResult{Config: config, ConfigJSON: string(configJSON), Success: true}
+}
+
+// NewRuleResult 表示创建新规则的结果。
+type NewRuleResult struct {
+	RuleJSON string `json:"ruleJson"` // 完整的 rulespec.Rule JSON
+	Success  bool   `json:"success"`
+	Error    string `json:"error,omitempty"`
+}
+
+// GenerateNewRule 生成一个新的空规则（含 UUID）。
+func (a *App) GenerateNewRule(name string) NewRuleResult {
+	rule := rulespec.NewRule(name)
+	ruleJSON, err := json.Marshal(rule)
+	if err != nil {
+		a.log.Error("序列化规则失败", "error", err)
+		return NewRuleResult{Success: false, Error: err.Error()}
+	}
+	return NewRuleResult{RuleJSON: string(ruleJSON), Success: true}
+}
+
 // SaveConfig 保存配置（创建或更新），id 为 0 时创建新配置。
 func (a *App) SaveConfig(id uint, name string, description string, rulesJSON string) ConfigResult {
 	var cfg rulespec.Config

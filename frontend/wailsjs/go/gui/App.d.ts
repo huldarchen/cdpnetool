@@ -8,6 +8,8 @@ export function CleanupEventHistory(arg1:number):Promise<gui.OperationResult>;
 
 export function CloseBrowser():Promise<gui.OperationResult>;
 
+export function CreateNewConfig(arg1:string):Promise<gui.NewConfigResult>;
+
 export function DeleteConfig(arg1:number):Promise<gui.OperationResult>;
 
 export function DetachTarget(arg1:string,arg2:string):Promise<gui.OperationResult>;
@@ -17,6 +19,8 @@ export function DisableInterception(arg1:string):Promise<gui.OperationResult>;
 export function EnableInterception(arg1:string):Promise<gui.OperationResult>;
 
 export function ExportConfig(arg1:string,arg2:string):Promise<gui.OperationResult>;
+
+export function GenerateNewRule(arg1:string):Promise<gui.NewRuleResult>;
 
 export function GetActiveConfig():Promise<gui.ConfigResult>;
 

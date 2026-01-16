@@ -14,6 +14,10 @@ export function CloseBrowser() {
   return window['go']['gui']['App']['CloseBrowser']();
 }
 
+export function CreateNewConfig(arg1) {
+  return window['go']['gui']['App']['CreateNewConfig'](arg1);
+}
+
 export function DeleteConfig(arg1) {
   return window['go']['gui']['App']['DeleteConfig'](arg1);
 }
@@ -32,6 +36,10 @@ export function EnableInterception(arg1) {
 
 export function ExportConfig(arg1, arg2) {
   return window['go']['gui']['App']['ExportConfig'](arg1, arg2);
+}
+
+export function GenerateNewRule(arg1) {
+  return window['go']['gui']['App']['GenerateNewRule'](arg1);
 }
 
 export function GetActiveConfig() {

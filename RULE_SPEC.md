@@ -111,7 +111,7 @@
   "id": "config-001",
   "name": "API 调试配置",
   "version": "2.0",
-  "description": "用于调试后端 API 接口的拦截规则集",
+  "description": "用于调试后端 API 接口的拦截配置",
   "settings": {},
   "rules": [
     // 规则列表...

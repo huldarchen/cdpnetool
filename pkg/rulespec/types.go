@@ -1,6 +1,13 @@
 // Package rulespec 定义规则配置的类型规范 (v2)
 package rulespec
 
+import "github.com/google/uuid"
+
+// 配置版本常量
+const (
+	DefaultConfigVersion = "1.0" // 默认配置版本
+)
+
 // Config 配置文件根结构
 type Config struct {
 	ID          string         `json:"id"`                    // 配置唯一标识符
@@ -9,6 +16,16 @@ type Config struct {
 	Description string         `json:"description,omitempty"` // 配置描述
 	Settings    map[string]any `json:"settings,omitempty"`    // 预留设置项
 	Rules       []Rule         `json:"rules"`                 // 规则列表
+}
+
+// NewConfig 创建一个新的空配置（带 UUID）
+func NewConfig(name string) *Config {
+	return &Config{
+		ID:      uuid.New().String(),
+		Name:    name,
+		Version: DefaultConfigVersion,
+		Rules:   []Rule{},
+	}
 }
 
 // Stage 生命周期阶段
@@ -28,6 +45,19 @@ type Rule struct {
 	Stage    Stage    `json:"stage"`    // 生命周期阶段
 	Match    Match    `json:"match"`    // 匹配规则
 	Actions  []Action `json:"actions"`  // 执行行为列表
+}
+
+// NewRule 创建一个新的空规则（带 UUID）
+func NewRule(name string) Rule {
+	return Rule{
+		ID:       uuid.New().String(),
+		Name:     name,
+		Enabled:  true,
+		Priority: 0,
+		Stage:    StageRequest,
+		Match:    Match{},
+		Actions:  []Action{},
+	}
 }
 
 // Match 匹配规则

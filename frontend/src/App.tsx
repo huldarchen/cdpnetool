@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { Toaster } from '@/components/ui/toaster'
@@ -11,7 +12,7 @@ import { RuleListEditor } from '@/components/rules'
 import { EventsPanel } from '@/components/events'
 import type { Rule, Config } from '@/types/rules'
 import type { InterceptEvent } from '@/types/events'
-import { createEmptyRule, createEmptyConfig } from '@/types/rules'
+import { createEmptyConfig } from '@/types/rules'
 import { 
   RefreshCw, 
   Moon, 
@@ -26,7 +27,8 @@ import {
   Save,
   Chrome,
   Trash2,
-  Edit3
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react'
 
 // 配置记录类型
@@ -77,6 +79,9 @@ declare global {
           RenameConfig: (id: number, newName: string) => Promise<{ success: boolean; error?: string }>
           SetDirty: (dirty: boolean) => Promise<void>
           ExportConfig: (name: string, json: string) => Promise<OperationResult>
+          // 创建新配置/规则 API（生成 UUID）
+          CreateNewConfig: (name: string) => Promise<{ config: ConfigRecord; configJson: string; success: boolean; error?: string }>
+          GenerateNewRule: (name: string) => Promise<{ ruleJson: string; success: boolean; error?: string }>
         }
       }
     }
@@ -181,10 +186,17 @@ function App() {
           // 自动获取目标列表
           await refreshTargets(result.sessionId)
         } else {
+          // 优化连接失败提示
+          let errorMessage = result?.error || '连接失败'
+          if (errorMessage.includes('connection refused') || errorMessage.includes('dial tcp') || errorMessage.includes('ECONNREFUSED')) {
+            errorMessage = '无法连接到浏览器，请先点击「启动浏览器」按钮启动一个浏览器实例'
+          } else if (errorMessage.includes('invalid') || errorMessage.includes('Invalid')) {
+            errorMessage = 'DevTools URL 格式无效，请检查 URL 是否正确'
+          }
           toast({
             variant: 'destructive',
             title: '连接失败',
-            description: result?.error,
+            description: errorMessage,
           })
         }
       } catch (e) {
@@ -448,7 +460,7 @@ function TargetsPanel({
   )
 }
 
-// Rules 面板组件（可视化编辑器 + 规则集管理）
+// Rules 面板组件（可视化编辑器 + 配置管理）
 interface RulesPanelProps {
   sessionId: string | null
   isConnected: boolean
@@ -473,7 +485,8 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
   const [newName, setNewName] = useState('')
   const [isInitializing, setIsInitializing] = useState(true)
   const [isDirty, setIsDirty] = useState(false)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; configId: number } | null>(null)
+  const [configInfoExpanded, setConfigInfoExpanded] = useState(false) // 配置信息栏展开状态
+  const [confirmDialog, setConfirmDialog] = useState<{ show: boolean; title: string; message: string; onConfirm: () => void } | null>(null)
 
   // 组件挂载时加载配置列表
   useEffect(() => {
@@ -485,13 +498,6 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
       .finally(() => {
         setIsInitializing(false)
       })
-  }, [])
-
-  // 点击其他地方关闭右键菜单
-  useEffect(() => {
-    const handleClick = () => setContextMenu(null)
-    document.addEventListener('click', handleClick)
-    return () => document.removeEventListener('click', handleClick)
   }, [])
 
   // 加载配置列表
@@ -543,7 +549,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [ruleSet, currentRuleSetId, currentRuleSetName, sessionId, isLoading])
 
-  // 加载规则集数据到编辑器
+  // 加载配置数据到编辑器
   const loadRuleSetData = (record: ConfigRecord) => {
     try {
       if (!record.rulesJson) {
@@ -577,46 +583,70 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
     }
   }
 
-  // 选择规则集
+  // 选择配置
   const handleSelectRuleSet = async (record: ConfigRecord) => {
     if (isDirty) {
-      const confirm = window.confirm('当前规则有未保存的更改，切换规则集将丢失这些更改，是否继续？')
-      if (!confirm) return
+      setConfirmDialog({
+        show: true,
+        title: '未保存的更改',
+        message: '当前配置有未保存的更改，切换配置将丢失这些更改。是否继续？',
+        onConfirm: () => {
+          loadRuleSetData(record)
+          window.go?.gui?.App?.SetActiveConfig(record.id)
+          toast({ variant: 'success', title: `已切换到配置: ${record.name}` })
+          setConfirmDialog(null)
+        }
+      })
+      return
     }
     loadRuleSetData(record)
-    // 设置为激活
     await window.go?.gui?.App?.SetActiveConfig(record.id)
-    toast({ variant: 'success', title: `已切换到规则集: ${record.name}` })
+    toast({ variant: 'success', title: `已切换到配置: ${record.name}` })
   }
 
-  // 创建新规则集
+  // 创建新配置（调用后端生成标准配置）
   const handleCreateRuleSet = async () => {
-    const name = `规则集 ${new Date().toLocaleString()}`
     try {
-      const emptyRuleSet = { version: '1.0', rules: [] }
-      const result = await window.go?.gui?.App?.SaveConfig(0, name, '', JSON.stringify(emptyRuleSet))
+      const result = await window.go?.gui?.App?.CreateNewConfig('新配置')
       if (result?.success && result.config) {
         await loadRuleSets()
         loadRuleSetData(result.config)
         await window.go?.gui?.App?.SetActiveConfig(result.config.id)
-        toast({ variant: 'success', title: '新规则集已创建' })
+        toast({ variant: 'success', title: '新配置已创建' })
       }
     } catch (e) {
       toast({ variant: 'destructive', title: '创建失败', description: String(e) })
     }
   }
 
-  // 删除规则集
+  // 删除当前配置
+  const handleDeleteCurrentConfig = async () => {
+    if (ruleSets.length <= 1) {
+      toast({ variant: 'destructive', title: '至少保留一个配置' })
+      return
+    }
+    setConfirmDialog({
+      show: true,
+      title: '删除配置',
+      message: `确定要删除配置「${currentRuleSetName}」吗？此操作不可撤销。`,
+      onConfirm: async () => {
+        await handleDeleteConfig(currentRuleSetId)
+        setConfirmDialog(null)
+      }
+    })
+  }
+
+  // 删除配置
   const handleDeleteConfig = async (id: number) => {
     if (ruleSets.length <= 1) {
-      toast({ variant: 'destructive', title: '至少保留一个规则集' })
+      toast({ variant: 'destructive', title: '至少保留一个配置' })
       return
     }
     try {
       const result = await window.go?.gui?.App?.DeleteConfig(id)
       if (result?.success) {
         await loadRuleSets()
-        // 如果删除的是当前规则集，切换到第一个
+        // 如果删除的是当前配置，切换到第一个
         if (id === currentRuleSetId) {
           const remaining = ruleSets.filter(r => r.id !== id)
           if (remaining.length > 0) {
@@ -624,14 +654,14 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
             await window.go?.gui?.App?.SetActiveConfig(remaining[0].id)
           }
         }
-        toast({ variant: 'success', title: '规则集已删除' })
+        toast({ variant: 'success', title: '配置已删除' })
       }
     } catch (e) {
       toast({ variant: 'destructive', title: '删除失败', description: String(e) })
     }
   }
 
-  // 重命名规则集
+  // 重命名配置
   const handleRenameConfig = async (id: number) => {
     if (!newName.trim()) return
     try {
@@ -728,19 +758,37 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
     }
   }
 
-  // 右键菜单
-  const handleContextMenu = (e: React.MouseEvent, configId: number) => {
-    e.preventDefault()
-    setContextMenu({ x: e.clientX, y: e.clientY, configId })
-  }
+  // 右键菜单 - 已移除
 
-  // 添加新规则
-  const handleAddRule = () => {
-    setRuleSet({
-      ...ruleSet,
-      rules: [...ruleSet.rules, createEmptyRule()]
-    })
-    updateDirty(true)
+  // 添加新规则（调用后端生成 UUID）
+  const handleAddRule = async () => {
+    try {
+      const result = await window.go?.gui?.App?.GenerateNewRule('新规则')
+      if (result?.success) {
+        const newRule = JSON.parse(result.ruleJson) as Rule
+        setRuleSet({
+          ...ruleSet,
+          rules: [...ruleSet.rules, newRule]
+        })
+        updateDirty(true)
+      }
+    } catch (e) {
+      // 回退到前端生成
+      const fallbackRule: Rule = {
+        id: crypto.randomUUID(),
+        name: '新规则',
+        enabled: true,
+        priority: 0,
+        stage: 'request',
+        match: {},
+        actions: []
+      }
+      setRuleSet({
+        ...ruleSet,
+        rules: [...ruleSet.rules, fallbackRule]
+      })
+      updateDirty(true)
+    }
   }
 
   // 保存配置
@@ -789,7 +837,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
     if (result && !result.success) {
       toast({ variant: 'destructive', title: '导出失败', description: result.error })
     } else if (result && result.success) {
-      toast({ variant: 'success', title: '规则集导出成功' })
+      toast({ variant: 'success', title: '配置导出成功' })
     }
   }
 
@@ -849,7 +897,6 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
                         : 'hover:bg-muted'
                     }`}
                     onClick={() => handleSelectRuleSet(config)}
-                    onContextMenu={(e) => handleContextMenu(e, config.id)}
                   >
                     <Switch
                       checked={config.id === activeConfigId}
@@ -886,88 +933,74 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
             </ScrollArea>
           </div>
 
-          {/* 右键菜单 */}
-          {contextMenu && (
-            <div
-              className="fixed z-50 min-w-32 bg-popover border rounded-md shadow-md p-1"
-              style={{ left: contextMenu.x, top: contextMenu.y }}
-            >
-              <button
-                className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-muted flex items-center gap-2"
-                onClick={() => {
-                  const config = ruleSets.find(r => r.id === contextMenu.configId)
-                  if (config) {
-                    setEditingName(config.id)
-                    setNewName(config.name)
-                  }
-                  setContextMenu(null)
-                }}
-              >
-                <Edit3 className="w-4 h-4" />
-                重命名
-              </button>
-              <button
-                className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-muted flex items-center gap-2 text-destructive disabled:opacity-50"
-                onClick={() => {
-                  handleDeleteConfig(contextMenu.configId)
-                  setContextMenu(null)
-                }}
-                disabled={ruleSets.length <= 1}
-              >
-                <Trash2 className="w-4 h-4" />
-                删除
-              </button>
-            </div>
-          )}
-
           {/* 右侧配置详情 */}
           <div className="flex-1 flex flex-col min-h-0 p-4">
-            {/* 配置信息栏 */}
-            <div className="flex flex-wrap items-center gap-4 mb-4 pb-3 border-b shrink-0">
+            {/* 配置信息栏（可折叠） */}
+            <div className="mb-4 pb-3 border-b shrink-0">
+              {/* 折叠头部 */}
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground whitespace-nowrap">配置名称:</span>
-                <Input
-                  value={currentRuleSetName}
-                  onChange={(e) => {
-                    setCurrentRuleSetName(e.target.value)
-                    updateDirty(true)
-                  }}
-                  className="w-40 h-8"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground whitespace-nowrap">描述:</span>
-                <Input
-                  value={currentDescription}
-                  onChange={(e) => {
-                    setCurrentDescription(e.target.value)
-                    updateDirty(true)
-                  }}
-                  placeholder="配置描述（可选）"
-                  className="w-48 h-8"
-                />
+                <button
+                  onClick={() => setConfigInfoExpanded(!configInfoExpanded)}
+                  className="flex items-center gap-1 text-sm font-medium hover:text-primary transition-colors"
+                >
+                  {configInfoExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  <span className="truncate max-w-48">{currentRuleSetName}</span>
+                </button>
                 {isDirty && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" title="有未保存更改" />}
+                <div className="flex-1" />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleImport}
+                  className="hidden"
+                />
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="w-4 h-4 mr-1" />
+                  导入
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleExport}>
+                  <Download className="w-4 h-4 mr-1" />
+                  导出
+                </Button>
+                <Button size="sm" onClick={handleSave} disabled={isLoading}>
+                  <Save className="w-4 h-4 mr-1" />
+                  {isLoading ? '保存中...' : '保存'}
+                </Button>
+                <Button variant="destructive" size="sm" onClick={handleDeleteCurrentConfig} disabled={ruleSets.length <= 1}>
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  删除
+                </Button>
               </div>
-              <div className="flex-1" />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                onChange={handleImport}
-                className="hidden"
-              />
-              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                <Upload className="w-4 h-4 mr-1" />
-                导入
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleExport}>
-                <Download className="w-4 h-4 mr-1" />
-                导出
-              </Button>
-              <Button size="sm" onClick={handleSave} disabled={isLoading}>
-                <Save className="w-4 h-4 mr-1" />
-                {isLoading ? '保存中...' : '保存'}
-              </Button>
+              
+              {/* 展开内容 */}
+              {configInfoExpanded && (
+                <div className="mt-3 space-y-3 pl-5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground whitespace-nowrap w-16">名称:</span>
+                    <Input
+                      value={currentRuleSetName}
+                      onChange={(e) => {
+                        setCurrentRuleSetName(e.target.value)
+                        updateDirty(true)
+                      }}
+                      className="flex-1 h-8 max-w-xs"
+                    />
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm text-muted-foreground whitespace-nowrap w-16 pt-2">描述:</span>
+                    <Textarea
+                      value={currentDescription}
+                      onChange={(e) => {
+                        setCurrentDescription(e.target.value)
+                        updateDirty(true)
+                      }}
+                      placeholder="配置描述（可选）"
+                      className="flex-1 min-h-[60px] max-w-md"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 规则工具栏 */}
@@ -1008,6 +1041,24 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
             </div>
           </div>
         </>
+      )}
+
+      {/* 自定义确认对话框 */}
+      {confirmDialog?.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background border rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-2">{confirmDialog.title}</h3>
+            <p className="text-muted-foreground mb-6">{confirmDialog.message}</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirmDialog(null)}>
+                取消
+              </Button>
+              <Button variant="destructive" onClick={confirmDialog.onConfirm}>
+                确定
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
