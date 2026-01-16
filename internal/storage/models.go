@@ -13,11 +13,10 @@ type Setting struct {
 
 // 预定义的设置 Key
 const (
-	SettingKeyDevToolsURL        = "devtools_url"
-	SettingKeyTheme              = "theme"
-	SettingKeyWindowBounds       = "window_bounds"
-	SettingKeyLastRuleSetID      = "last_ruleset_id"
-	SettingKeyEventRetentionDays = "event_retention_days"
+	SettingKeyDevToolsURL   = "devtools_url"
+	SettingKeyTheme         = "theme"
+	SettingKeyWindowBounds  = "window_bounds"
+	SettingKeyLastRuleSetID = "last_ruleset_id"
 )
 
 // RuleSetRecord 规则集表
@@ -45,15 +44,4 @@ type InterceptEventRecord struct {
 	Error      string    `json:"error"`
 	Timestamp  int64     `gorm:"index" json:"timestamp"`
 	CreatedAt  time.Time `json:"createdAt"`
-}
-
-// RequestSnapshot 请求快照表 (P2 - 可选功能)
-type RequestSnapshot struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	EventID         uint      `gorm:"index" json:"eventId"`
-	RequestHeaders  string    `gorm:"type:text" json:"requestHeaders"` // JSON
-	RequestBody     string    `gorm:"type:text" json:"requestBody"`
-	ResponseHeaders string    `gorm:"type:text" json:"responseHeaders"` // JSON
-	ResponseBody    string    `gorm:"type:text" json:"responseBody"`
-	CreatedAt       time.Time `json:"createdAt"`
 }

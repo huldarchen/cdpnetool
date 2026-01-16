@@ -18,23 +18,15 @@ import (
 
 // App 是暴露给前端的 Wails 方法集合，负责管理会话、浏览器、规则和事件。
 type App struct {
-	ctx     context.Context
-	log     logger.Logger
-	service api.Service
-
-	// currentSession 当前活跃的会话 ID（简化版，后续可支持多 session）
+	ctx            context.Context
+	log            logger.Logger
+	service        api.Service
 	currentSession model.SessionID
-
-	// browser 已启动的浏览器进程实例
-	browser *browser.Browser
-
-	// 数据库连接
-	db *storage.DB
-
-	// 存储仓库
-	settingsRepo *storage.SettingsRepo
-	ruleSetRepo  *storage.RuleSetRepo
-	eventRepo    *storage.EventRepo
+	browser        *browser.Browser
+	db             *storage.DB
+	settingsRepo   *storage.SettingsRepo
+	ruleSetRepo    *storage.RuleSetRepo
+	eventRepo      *storage.EventRepo
 }
 
 // NewApp 创建并返回一个新的 App 实例。

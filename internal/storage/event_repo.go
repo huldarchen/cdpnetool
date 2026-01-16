@@ -9,8 +9,7 @@ import (
 
 // EventRepo 事件历史仓库
 type EventRepo struct {
-	db *DB
-	// 异步写入缓冲
+	db        *DB
 	buffer    []InterceptEventRecord
 	bufferMu  sync.Mutex
 	batchSize int

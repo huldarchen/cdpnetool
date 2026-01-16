@@ -82,8 +82,6 @@ func (r *SettingsRepo) SetMultiple(kvs map[string]string) error {
 	})
 }
 
-// 便捷方法
-
 // GetDevToolsURL 获取 DevTools URL
 func (r *SettingsRepo) GetDevToolsURL() string {
 	return r.GetWithDefault(SettingKeyDevToolsURL, "http://localhost:9222")

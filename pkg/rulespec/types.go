@@ -1,8 +1,6 @@
 // Package rulespec 定义规则配置的类型规范 (v2)
 package rulespec
 
-// ==================== 配置结构 ====================
-
 // Config 配置文件根结构
 type Config struct {
 	ID          string         `json:"id"`                    // 配置唯一标识符
@@ -12,8 +10,6 @@ type Config struct {
 	Settings    map[string]any `json:"settings,omitempty"`    // 预留设置项
 	Rules       []Rule         `json:"rules"`                 // 规则列表
 }
-
-// ==================== 规则结构 ====================
 
 // Stage 生命周期阶段
 type Stage string
@@ -34,8 +30,6 @@ type Rule struct {
 	Actions  []Action `json:"actions"`  // 执行行为列表
 }
 
-// ==================== 匹配结构 ====================
-
 // Match 匹配规则
 type Match struct {
 	AllOf []Condition `json:"allOf,omitempty"` // AND 逻辑
@@ -45,50 +39,40 @@ type Match struct {
 // ConditionType 条件类型
 type ConditionType string
 
-// URL 条件类型
 const (
+	// URL 条件类型
 	ConditionURLEquals   ConditionType = "urlEquals"   // URL 精确匹配
 	ConditionURLPrefix   ConditionType = "urlPrefix"   // URL 前缀匹配
 	ConditionURLSuffix   ConditionType = "urlSuffix"   // URL 后缀匹配
 	ConditionURLContains ConditionType = "urlContains" // URL 包含匹配
 	ConditionURLRegex    ConditionType = "urlRegex"    // URL 正则匹配
-)
 
-// Method 和 ResourceType 条件类型
-const (
+	// Method 和 ResourceType 条件类型
 	ConditionMethod       ConditionType = "method"       // HTTP 方法
 	ConditionResourceType ConditionType = "resourceType" // 资源类型
-)
 
-// Header 条件类型
-const (
+	// Header 条件类型
 	ConditionHeaderExists    ConditionType = "headerExists"    // Header 存在
 	ConditionHeaderNotExists ConditionType = "headerNotExists" // Header 不存在
 	ConditionHeaderEquals    ConditionType = "headerEquals"    // Header 精确匹配
 	ConditionHeaderContains  ConditionType = "headerContains"  // Header 包含
 	ConditionHeaderRegex     ConditionType = "headerRegex"     // Header 正则
-)
 
-// Query 条件类型
-const (
+	// Query 条件类型
 	ConditionQueryExists    ConditionType = "queryExists"    // Query 存在
 	ConditionQueryNotExists ConditionType = "queryNotExists" // Query 不存在
 	ConditionQueryEquals    ConditionType = "queryEquals"    // Query 精确匹配
 	ConditionQueryContains  ConditionType = "queryContains"  // Query 包含
 	ConditionQueryRegex     ConditionType = "queryRegex"     // Query 正则
-)
 
-// Cookie 条件类型
-const (
+	// Cookie 条件类型
 	ConditionCookieExists    ConditionType = "cookieExists"    // Cookie 存在
 	ConditionCookieNotExists ConditionType = "cookieNotExists" // Cookie 不存在
 	ConditionCookieEquals    ConditionType = "cookieEquals"    // Cookie 精确匹配
 	ConditionCookieContains  ConditionType = "cookieContains"  // Cookie 包含
 	ConditionCookieRegex     ConditionType = "cookieRegex"     // Cookie 正则
-)
 
-// Body 条件类型
-const (
+	// Body 条件类型
 	ConditionBodyContains ConditionType = "bodyContains" // Body 包含
 	ConditionBodyRegex    ConditionType = "bodyRegex"    // Body 正则
 	ConditionBodyJsonPath ConditionType = "bodyJsonPath" // JSON Path 匹配
@@ -104,13 +88,11 @@ type Condition struct {
 	Path    string        `json:"path,omitempty"`    // JSON Path (bodyJsonPath)
 }
 
-// ==================== 行为结构 ====================
-
 // ActionType 行为类型
 type ActionType string
 
-// 请求阶段行为类型
 const (
+	// 请求阶段行为类型
 	ActionSetUrl           ActionType = "setUrl"           // 设置请求 URL
 	ActionSetMethod        ActionType = "setMethod"        // 设置请求方法
 	ActionSetQueryParam    ActionType = "setQueryParam"    // 设置查询参数
@@ -120,19 +102,15 @@ const (
 	ActionSetFormField     ActionType = "setFormField"     // 设置表单字段
 	ActionRemoveFormField  ActionType = "removeFormField"  // 移除表单字段
 	ActionBlock            ActionType = "block"            // 拦截请求
-)
 
-// 请求/响应阶段通用行为类型
-const (
+	// 请求/响应阶段通用行为类型
 	ActionSetHeader       ActionType = "setHeader"       // 设置头部
 	ActionRemoveHeader    ActionType = "removeHeader"    // 移除头部
 	ActionSetBody         ActionType = "setBody"         // 替换 Body
 	ActionReplaceBodyText ActionType = "replaceBodyText" // 字符串替换 Body
 	ActionPatchBodyJson   ActionType = "patchBodyJson"   // JSON Patch 修改 Body
-)
 
-// 响应阶段行为类型
-const (
+	// 响应阶段行为类型
 	ActionSetStatus ActionType = "setStatus" // 设置响应状态码
 )
 
@@ -167,8 +145,6 @@ type JSONPatchOp struct {
 	Value any    `json:"value,omitempty"` // 值
 	From  string `json:"from,omitempty"`  // 源路径 (move, copy)
 }
-
-// ==================== 辅助函数 ====================
 
 // IsTerminal 判断行为是否为终结性行为
 func (a *Action) IsTerminal() bool {
@@ -208,8 +184,6 @@ func (a *Action) GetBodyEncoding() BodyEncoding {
 	}
 	return a.BodyEncoding
 }
-
-// ==================== 资源类型常量 ====================
 
 // ResourceType 资源类型
 type ResourceType string

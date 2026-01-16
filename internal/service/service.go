@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"cdpnetool/internal/cdp"
-	logger "cdpnetool/internal/logger"
+	"cdpnetool/internal/logger"
 	"cdpnetool/pkg/model"
 	"cdpnetool/pkg/rulespec"
 

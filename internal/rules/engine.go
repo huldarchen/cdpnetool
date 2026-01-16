@@ -13,9 +13,8 @@ import (
 
 // Engine 规则引擎
 type Engine struct {
-	config *rulespec.Config
-	mu     sync.RWMutex
-	// 统计信息
+	config  *rulespec.Config
+	mu      sync.RWMutex
 	total   int64
 	matched int64
 	byRule  map[string]int64

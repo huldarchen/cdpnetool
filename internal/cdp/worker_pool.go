@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	logger "cdpnetool/internal/logger"
+	"cdpnetool/internal/logger"
 )
 
 // workerPool 并发工作池，用于限制拦截事件的并发处理数量

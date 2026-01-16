@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	logger "cdpnetool/internal/logger"
+	"cdpnetool/internal/logger"
 	"cdpnetool/internal/rules"
 	"cdpnetool/pkg/model"
 	"cdpnetool/pkg/rulespec"

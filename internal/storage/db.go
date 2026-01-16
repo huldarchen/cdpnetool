@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,7 +18,6 @@ type DB struct {
 // NewDB 创建新的数据库连接实例并执行迁移
 func NewDB() (*DB, error) {
 	dbPath, err := getDBPath()
-	fmt.Println("DB Path:", dbPath)
 	if err != nil {
 		return nil, err
 	}
