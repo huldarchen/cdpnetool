@@ -23,7 +23,7 @@ interface SessionState {
   isIntercepting: boolean
   activeConfigId: number | null
   targets: TargetInfo[]
-  attachedTargets: Set<string>
+  attachedTargetId: string | null
   matchedEvents: MatchedEventWithId[]    // 匹配的事件（会存入数据库）
   unmatchedEvents: UnmatchedEventWithId[] // 未匹配的事件（仅内存）
   
@@ -34,7 +34,8 @@ interface SessionState {
   setIntercepting: (intercepting: boolean) => void
   setActiveConfigId: (id: number | null) => void
   setTargets: (targets: TargetInfo[]) => void
-  toggleAttachedTarget: (targetId: string) => void
+  setAttachedTargetId: (targetId: string | null) => void
+  resetSession: () => void
   
   // 事件操作
   addInterceptEvent: (event: InterceptEvent) => void
@@ -55,7 +56,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   isIntercepting: false,
   activeConfigId: null,
   targets: [],
-  attachedTargets: new Set(),
+  attachedTargetId: null,
   matchedEvents: [],
   unmatchedEvents: [],
   
@@ -65,14 +66,13 @@ export const useSessionStore = create<SessionState>((set) => ({
   setIntercepting: (intercepting) => set({ isIntercepting: intercepting }),
   setActiveConfigId: (id) => set({ activeConfigId: id }),
   setTargets: (targets) => set({ targets }),
-  toggleAttachedTarget: (targetId) => set((state) => {
-    const newSet = new Set(state.attachedTargets)
-    if (newSet.has(targetId)) {
-      newSet.delete(targetId)
-    } else {
-      newSet.add(targetId)
-    }
-    return { attachedTargets: newSet }
+  setAttachedTargetId: (targetId) => set({ attachedTargetId: targetId }),
+
+  resetSession: () => set({
+    attachedTargetId: null,
+    activeConfigId: null,
+    isIntercepting: false,
+    targets: [],
   }),
   
   // 添加事件（根据 isMatched 分开存储）

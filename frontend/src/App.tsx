@@ -95,16 +95,19 @@ function App() {
     setCurrentSession,
     isConnected,
     setConnected,
+    isIntercepting,
     setIntercepting,
+    setActiveConfigId,
     targets,
     setTargets,
-    attachedTargets,
-    toggleAttachedTarget,
+    attachedTargetId,
+    setAttachedTargetId,
     matchedEvents,
     unmatchedEvents,
     addInterceptEvent,
     clearMatchedEvents,
     clearUnmatchedEvents,
+    resetSession,
   } = useSessionStore()
   
   const { isDark, toggle: toggleTheme } = useThemeStore()
@@ -151,8 +154,7 @@ function App() {
         if (result?.success) {
           setConnected(false)
           setCurrentSession(null)
-          setIntercepting(false)
-          setTargets([])
+          resetSession() // 一键重置拦截状态、激活配置 ID 和附加目标
           toast({
             variant: 'success',
             title: '已断开连接',
@@ -231,45 +233,45 @@ function App() {
   const handleToggleTarget = async (targetId: string) => {
     if (!currentSessionId) return
     
-    const isAttached = attachedTargets.has(targetId)
+    const isCurrentlyAttached = attachedTargetId === targetId
+    
     try {
-      if (isAttached) {
+      // 1. 如果正在拦截，切换任何目标状态前必须先停止拦截（保证前后端一致）
+      if (isIntercepting) {
+        await window.go?.gui?.App?.DisableInterception(currentSessionId)
+        setIntercepting(false)
+        setActiveConfigId(null)
+        toast({ title: '配置已禁用', description: '修改附着目标时，拦截已自动停止' })
+      }
+
+      // 2. 如果点击的是当前已附着的目标 -> 执行“分离”
+      if (isCurrentlyAttached) {
         const result = await window.go?.gui?.App?.DetachTarget(currentSessionId, targetId)
         if (result?.success) {
-          toggleAttachedTarget(targetId)
-          toast({
-            variant: 'success',
-            title: '已移除目标',
-          })
+          setAttachedTargetId(null)
+          toast({ variant: 'success', title: '已移除目标' })
         } else {
-          toast({
-            variant: 'destructive',
-            title: '移除失败',
-            description: result?.error,
-          })
+          toast({ variant: 'destructive', title: '移除失败', description: result?.error })
         }
+        return
+      }
+
+      // 3. 如果点击的是新目标 -> 先分离旧的（如果有），再附着新的
+      if (attachedTargetId) {
+        await window.go?.gui?.App?.DetachTarget(currentSessionId, attachedTargetId)
+        // 不需要在这里 setAttachedTargetId(null)，因为后面紧接着会 set 新的
+      }
+
+      const result = await window.go?.gui?.App?.AttachTarget(currentSessionId, targetId)
+      if (result?.success) {
+        setAttachedTargetId(targetId)
+        toast({ variant: 'success', title: '已切换并附加新目标' })
       } else {
-        const result = await window.go?.gui?.App?.AttachTarget(currentSessionId, targetId)
-        if (result?.success) {
-          toggleAttachedTarget(targetId)
-          toast({
-            variant: 'success',
-            title: '已附加目标',
-          })
-        } else {
-          toast({
-            variant: 'destructive',
-            title: '附加失败',
-            description: result?.error,
-          })
-        }
+        setAttachedTargetId(null) // 这种情况下旧的已断开，新的没上，干脆重置
+        toast({ variant: 'destructive', title: '附加新目标失败', description: result?.error })
       }
     } catch (e) {
-      toast({
-        variant: 'destructive',
-        title: '操作错误',
-        description: String(e),
-      })
+      toast({ variant: 'destructive', title: '操作错误', description: String(e) })
     }
   }
 
@@ -344,7 +346,7 @@ function App() {
             </span>
             {isConnected && (
               <span className="text-muted-foreground">
-                · 目标 {attachedTargets.size}/{targets.length}
+                · 目标 {attachedTargetId ? 1 : 0}/1
               </span>
             )}
           </div>
@@ -379,7 +381,7 @@ function App() {
             <div className="h-full overflow-auto p-4">
               <TargetsPanel 
                 targets={targets}
-                attachedTargets={attachedTargets}
+                attachedTargetId={attachedTargetId}
                 onToggle={handleToggleTarget}
                 isConnected={isConnected}
               />
@@ -391,7 +393,7 @@ function App() {
             <RulesPanel 
               sessionId={currentSessionId}
               isConnected={isConnected}
-              attachedTargets={attachedTargets}
+              attachedTargetId={attachedTargetId}
               setIntercepting={setIntercepting}
             />
           </TabsContent>
@@ -426,12 +428,12 @@ function App() {
 // Targets 面板组件
 function TargetsPanel({ 
   targets, 
-  attachedTargets, 
+  attachedTargetId, 
   onToggle,
   isConnected 
 }: { 
   targets: any[]
-  attachedTargets: Set<string>
+  attachedTargetId: string | null
   onToggle: (id: string) => void
   isConnected: boolean
 }) {
@@ -463,11 +465,11 @@ function TargetsPanel({
             <div className="text-sm text-muted-foreground truncate">{target.url}</div>
           </div>
           <Button
-            variant={attachedTargets.has(target.id) ? "default" : "outline"}
+            variant={attachedTargetId === target.id ? "default" : "outline"}
             size="sm"
             onClick={() => onToggle(target.id)}
           >
-            {attachedTargets.has(target.id) ? '已附加' : '附加'}
+            {attachedTargetId === target.id ? '已附加' : '附加'}
           </Button>
         </div>
       ))}
@@ -479,11 +481,11 @@ function TargetsPanel({
 interface RulesPanelProps {
   sessionId: string | null
   isConnected: boolean
-  attachedTargets: Set<string>
+  attachedTargetId: string | null
   setIntercepting: (intercepting: boolean) => void
 }
 
-function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }: RulesPanelProps) {
+function RulesPanel({ sessionId, isConnected, attachedTargetId, setIntercepting }: RulesPanelProps) {
   const { toast } = useToast()
   const { activeConfigId, setActiveConfigId } = useSessionStore()
   const [ruleSet, setRuleSet] = useState<Config>(createEmptyConfig())
@@ -729,8 +731,8 @@ function RulesPanel({ sessionId, isConnected, attachedTargets, setIntercepting }
         toast({ variant: 'destructive', title: '请先连接到浏览器' })
         return
       }
-      if (attachedTargets.size === 0) {
-        toast({ variant: 'destructive', title: '请先在 Targets 标签页附加至少一个目标' })
+      if (!attachedTargetId) {
+        toast({ variant: 'destructive', title: '请先在 Targets 标签页附加一个目标' })
         return
       }
       
