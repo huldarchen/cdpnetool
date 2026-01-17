@@ -78,7 +78,7 @@ export const useSessionStore = create<SessionState>((set) => ({
     if (event.isMatched && event.matched) {
       const eventWithId: MatchedEventWithId = {
         ...event.matched,
-        id: generateEventId(event.matched.timestamp),
+        id: generateEventId(event.matched.networkEvent.timestamp),
       }
       return {
         matchedEvents: [eventWithId, ...state.matchedEvents].slice(0, 200) // 保留最新 200 条
@@ -86,7 +86,7 @@ export const useSessionStore = create<SessionState>((set) => ({
     } else if (!event.isMatched && event.unmatched) {
       const eventWithId: UnmatchedEventWithId = {
         ...event.unmatched,
-        id: generateEventId(event.unmatched.timestamp),
+        id: generateEventId(event.unmatched.networkEvent.timestamp),
       }
       return {
         unmatchedEvents: [eventWithId, ...state.unmatchedEvents].slice(0, 100) // 保留最新 100 条

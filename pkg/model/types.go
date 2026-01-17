@@ -36,26 +36,45 @@ type TargetInfo struct {
 
 // ==================== 事件系统 ====================
 
-// MatchedEvent 匹配的请求事件（会存入数据库）
-type MatchedEvent struct {
-	Session    SessionID `json:"session"`
-	Target     TargetID  `json:"target"`
-	URL        string    `json:"url"`
-	Method     string    `json:"method"`
-	Stage      string    `json:"stage"` // request / response
-	StatusCode int       `json:"statusCode,omitempty"`
-	Timestamp  int64     `json:"timestamp"`
+// NetworkEvent 网络请求事件（通用结构，包含完整请求响应信息）
+type NetworkEvent struct {
+	Session   SessionID `json:"session"`
+	Target    TargetID  `json:"target"`
+	Timestamp int64     `json:"timestamp"`
+	IsMatched bool      `json:"isMatched"`
 
-	// 最终结果: blocked / modified / passed
-	FinalResult string `json:"finalResult"`
+	// 请求信息
+	Request RequestInfo `json:"request"`
 
-	// 匹配的规则列表
-	MatchedRules []RuleMatch `json:"matchedRules"`
+	// 响应信息（可能为空，例如被阻断的请求）
+	Response ResponseInfo `json:"response,omitempty"`
 
-	// 原始数据
-	Original RequestResponseData `json:"original"`
-	// 修改后的数据
-	Modified RequestResponseData `json:"modified"`
+	// 匹配信息（仅匹配请求有）
+	FinalResult  string      `json:"finalResult,omitempty"`
+	MatchedRules []RuleMatch `json:"matchedRules,omitempty"`
+}
+
+// RequestInfo 请求信息
+type RequestInfo struct {
+	URL          string            `json:"url"`
+	Method       string            `json:"method"`
+	Headers      map[string]string `json:"headers"`
+	Body         string            `json:"body"`
+	ResourceType string            `json:"resourceType,omitempty"` // document/xhr/script/image等
+}
+
+// ResponseInfo 响应信息
+type ResponseInfo struct {
+	StatusCode int               `json:"statusCode"`
+	Headers    map[string]string `json:"headers"`
+	Body       string            `json:"body"`
+	Timing     ResponseTiming    `json:"timing,omitempty"` // 响应时间信息
+}
+
+// ResponseTiming 响应时间信息
+type ResponseTiming struct {
+	StartTime int64 `json:"startTime"` // 开始时间
+	EndTime   int64 `json:"endTime"`   // 结束时间
 }
 
 // RuleMatch 规则匹配信息
@@ -65,25 +84,14 @@ type RuleMatch struct {
 	Actions  []string `json:"actions"` // 实际执行的 action 类型列表
 }
 
-// RequestResponseData 请求/响应数据
-type RequestResponseData struct {
-	URL          string            `json:"url,omitempty"`
-	Method       string            `json:"method,omitempty"`
-	Headers      map[string]string `json:"headers,omitempty"`
-	Body         string            `json:"body,omitempty"`
-	PostData     string            `json:"postData,omitempty"` // POST 数据
-	StatusCode   int               `json:"statusCode,omitempty"`
-	ResourceType string            `json:"resourceType,omitempty"` // document/xhr/script/image等
+// MatchedEvent 匹配的请求事件（会存入数据库）
+type MatchedEvent struct {
+	NetworkEvent
 }
 
 // UnmatchedEvent 未匹配的请求事件（仅内存，不存数据库）
 type UnmatchedEvent struct {
-	Target     TargetID `json:"target"`
-	URL        string   `json:"url"`
-	Method     string   `json:"method"`
-	Stage      string   `json:"stage"` // request / response
-	StatusCode int      `json:"statusCode,omitempty"`
-	Timestamp  int64    `json:"timestamp"`
+	NetworkEvent
 }
 
 // InterceptEvent 统一事件接口（用于通道传输）

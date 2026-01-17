@@ -38,12 +38,11 @@ type MatchedEventRecord struct {
 	TargetID         string    `json:"targetId"`
 	URL              string    `json:"url"`
 	Method           string    `json:"method"`
-	Stage            string    `json:"stage"`                             // request / response
 	StatusCode       int       `json:"statusCode"`                        // 状态码
 	FinalResult      string    `gorm:"index" json:"finalResult"`          // blocked / modified / passed
 	MatchedRulesJSON string    `gorm:"type:text" json:"matchedRulesJson"` // 匹配规则 JSON 数组
-	OriginalJSON     string    `gorm:"type:text" json:"originalJson"`     // 原始请求/响应 JSON
-	ModifiedJSON     string    `gorm:"type:text" json:"modifiedJson"`     // 修改后请求/响应 JSON
+	RequestJSON      string    `gorm:"type:text" json:"requestJson"`      // 请求信息 JSON
+	ResponseJSON     string    `gorm:"type:text" json:"responseJson"`     // 响应信息 JSON
 	Timestamp        int64     `gorm:"index" json:"timestamp"`
 	CreatedAt        time.Time `json:"createdAt"`
 }

@@ -1,16 +1,24 @@
 // 拦截事件相关类型
 
-// ========== 请求响应数据 ==========
-export interface RequestResponseData {
-  url?: string
-  method?: string
+// ========== 请求信息 ==========
+export interface RequestInfo {
+  url: string
+  method: string
   headers: Record<string, string>
   body: string
-  postData?: string      // POST 数据
-  statusCode?: number    // 仅响应阶段有
   resourceType?: string  // document/xhr/script/image等
 }
 
+// ========== 响应信息 ==========
+export interface ResponseInfo {
+  statusCode: number
+  headers: Record<string, string>
+  body: string
+  timing?: {
+    startTime: number  // 开始时间
+    endTime: number    // 结束时间
+  }
+}
 // ========== 规则匹配信息 ==========
 export interface RuleMatch {
   ruleId: string
@@ -18,29 +26,32 @@ export interface RuleMatch {
   actions: string[]  // 执行的 action 类型列表
 }
 
-// ========== 匹配的事件（会存入数据库）==========
-export interface MatchedEvent {
+// ========== 网络事件（通用结构）==========
+export interface NetworkEvent {
   session: string
   target: string
-  url: string
-  method: string
-  stage: 'request' | 'response'
-  statusCode?: number  // 仅响应阶段有
   timestamp: number
-  finalResult: 'blocked' | 'modified' | 'passed'
-  matchedRules: RuleMatch[]
-  original: RequestResponseData
-  modified: RequestResponseData
+  isMatched: boolean
+
+  // 请求信息
+  request: RequestInfo
+
+  // 响应信息（可能为空，例如被阻断的请求）
+  response?: ResponseInfo
+
+  // 匹配信息（仅匹配请求有）
+  finalResult?: 'blocked' | 'modified' | 'passed'
+  matchedRules?: RuleMatch[]
+}
+
+// ========== 匹配的事件（会存入数据库）==========
+export interface MatchedEvent {
+  networkEvent: NetworkEvent
 }
 
 // ========== 未匹配的事件（仅内存，不存数据库）==========
 export interface UnmatchedEvent {
-  target: string
-  url: string
-  method: string
-  stage: 'request' | 'response'
-  statusCode?: number
-  timestamp: number
+  networkEvent: NetworkEvent
 }
 
 // ========== 统一事件接口（用于通道传输）==========

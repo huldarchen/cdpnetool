@@ -384,12 +384,11 @@ export namespace storage {
 	    targetId: string;
 	    url: string;
 	    method: string;
-	    stage: string;
 	    statusCode: number;
 	    finalResult: string;
 	    matchedRulesJson: string;
-	    originalJson: string;
-	    modifiedJson: string;
+	    requestJson: string;
+	    responseJson: string;
 	    timestamp: number;
 	    // Go type: time
 	    createdAt: any;
@@ -405,12 +404,11 @@ export namespace storage {
 	        this.targetId = source["targetId"];
 	        this.url = source["url"];
 	        this.method = source["method"];
-	        this.stage = source["stage"];
 	        this.statusCode = source["statusCode"];
 	        this.finalResult = source["finalResult"];
 	        this.matchedRulesJson = source["matchedRulesJson"];
-	        this.originalJson = source["originalJson"];
-	        this.modifiedJson = source["modifiedJson"];
+	        this.requestJson = source["requestJson"];
+	        this.responseJson = source["responseJson"];
 	        this.timestamp = source["timestamp"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	    }

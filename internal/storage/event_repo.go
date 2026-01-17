@@ -82,20 +82,19 @@ func (r *EventRepo) Stop() {
 func (r *EventRepo) RecordMatched(evt *model.MatchedEvent) {
 	// 序列化规则列表
 	matchedRulesJSON, _ := json.Marshal(evt.MatchedRules)
-	originalJSON, _ := json.Marshal(evt.Original)
-	modifiedJSON, _ := json.Marshal(evt.Modified)
+	requestJSON, _ := json.Marshal(evt.Request)
+	responseJSON, _ := json.Marshal(evt.Response)
 
 	record := MatchedEventRecord{
 		SessionID:        string(evt.Session),
 		TargetID:         string(evt.Target),
-		URL:              evt.URL,
-		Method:           evt.Method,
-		Stage:            evt.Stage,
-		StatusCode:       evt.StatusCode,
+		URL:              evt.Request.URL,
+		Method:           evt.Request.Method,
+		StatusCode:       evt.Response.StatusCode,
 		FinalResult:      evt.FinalResult,
 		MatchedRulesJSON: string(matchedRulesJSON),
-		OriginalJSON:     string(originalJSON),
-		ModifiedJSON:     string(modifiedJSON),
+		RequestJSON:      string(requestJSON),
+		ResponseJSON:     string(responseJSON),
 		Timestamp:        evt.Timestamp,
 		CreatedAt:        time.Now(),
 	}

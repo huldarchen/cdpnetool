@@ -11,8 +11,6 @@ import {
   ChevronUp,
   Trash2,
   Filter,
-  ArrowRight,
-  ArrowLeft,
   Copy,
   Check,
   CheckCircle,
@@ -92,13 +90,13 @@ function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
 
   const filteredEvents = useMemo(() => {
     return events.filter(evt => {
-      if (resultFilter !== 'all' && evt.finalResult !== resultFilter) return false
+      if (resultFilter !== 'all' && evt.networkEvent.finalResult !== resultFilter) return false
       if (search) {
         const searchLower = search.toLowerCase()
         return (
-          evt.url.toLowerCase().includes(searchLower) ||
-          evt.method.toLowerCase().includes(searchLower) ||
-          evt.matchedRules.some(r => r.ruleName.toLowerCase().includes(searchLower))
+          evt.networkEvent.request.url.toLowerCase().includes(searchLower) ||
+          evt.networkEvent.request.method.toLowerCase().includes(searchLower) ||
+          evt.networkEvent.matchedRules?.some(r => r.ruleName.toLowerCase().includes(searchLower)) || false
         )
       }
       return true
@@ -108,7 +106,8 @@ function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
   const resultCounts = useMemo(() => {
     const counts: Record<string, number> = { all: events.length }
     events.forEach(evt => {
-      counts[evt.finalResult] = (counts[evt.finalResult] || 0) + 1
+      const result = evt.networkEvent.finalResult || 'passed';
+      counts[result] = (counts[result] || 0) + 1
     })
     return counts
   }, [events])
@@ -205,8 +204,8 @@ function UnmatchedEventsList({ events, onClear }: UnmatchedEventsListProps) {
     if (!search) return events
     const searchLower = search.toLowerCase()
     return events.filter(evt => 
-      evt.url.toLowerCase().includes(searchLower) ||
-      evt.method.toLowerCase().includes(searchLower)
+      evt.networkEvent.request.url.toLowerCase().includes(searchLower) ||
+      evt.networkEvent.request.method.toLowerCase().includes(searchLower)
     )
   }, [events, search])
 
@@ -279,10 +278,10 @@ interface MatchedEventItemProps {
 
 function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventItemProps) {
   const [copied, setCopied] = useState(false)
-  const colors = FINAL_RESULT_COLORS[event.finalResult] || FINAL_RESULT_COLORS.passed
+  const colors = FINAL_RESULT_COLORS[event.networkEvent.finalResult!] || FINAL_RESULT_COLORS.passed
 
   const handleCopyUrl = async () => {
-    await navigator.clipboard.writeText(event.url)
+    await navigator.clipboard.writeText(event.networkEvent.request.url)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -305,36 +304,27 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
       >
         {/* 结果标签 */}
         <Badge variant="outline" className={`${colors.bg} ${colors.text} border-0 text-xs`}>
-          {FINAL_RESULT_LABELS[event.finalResult]}
-        </Badge>
-
-        {/* 阶段标签 */}
-        <Badge variant="outline" className="text-xs">
-          {event.stage === 'request' ? (
-            <><ArrowRight className="w-3 h-3 mr-0.5" />REQ</>
-          ) : (
-            <><ArrowLeft className="w-3 h-3 mr-0.5" />RES</>
-          )}
+          {FINAL_RESULT_LABELS[event.networkEvent.finalResult!]}
         </Badge>
 
         {/* Method */}
         <span className="font-mono text-xs font-medium px-1.5 py-0.5 rounded bg-muted">
-          {event.method}
+          {event.networkEvent.request.method}
         </span>
 
         {/* URL */}
         <span className="flex-1 text-sm truncate text-muted-foreground font-mono">
-          {event.url}
+          {event.networkEvent.request.url}
         </span>
 
         {/* 匹配规则数 */}
         <Badge variant="secondary" className="text-xs">
-          {event.matchedRules.length} 规则
+          {event.networkEvent.matchedRules?.length || 0} 规则
         </Badge>
 
         {/* 时间 */}
         <span className="text-xs text-muted-foreground shrink-0">
-          {formatTime(event.timestamp)}
+          {formatTime(event.networkEvent.timestamp)}
         </span>
 
         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -349,22 +339,22 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
             <div className="grid grid-cols-3 gap-2 text-xs">
               <div>
                 <span className="text-muted-foreground">Target:</span>
-                <span className="ml-2 font-mono">{event.target.slice(0, 16)}...</span>
+                <span className="ml-2 font-mono">{event.networkEvent.target.slice(0, 16)}...</span>
               </div>
-              {event.original?.resourceType && (
+              {event.networkEvent.request?.resourceType && (
                 <div>
                   <span className="text-muted-foreground">Type:</span>
-                  <span className="ml-2 font-mono">{event.original.resourceType}</span>
+                  <span className="ml-2 font-mono">{event.networkEvent.request.resourceType}</span>
                 </div>
               )}
-              {(event.statusCode || 0) > 0 && (
+              {event.networkEvent.response?.statusCode && (
                 <div>
                   <span className="text-muted-foreground">Status:</span>
                   <span className={`ml-2 font-mono ${
-                    (event.statusCode || 0) >= 400 ? 'text-red-500' : 
-                    (event.statusCode || 0) >= 300 ? 'text-yellow-500' : 'text-green-500'
+                    event.networkEvent.response.statusCode >= 400 ? 'text-red-500' : 
+                    event.networkEvent.response.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
                   }`}>
-                    {event.statusCode}
+                    {event.networkEvent.response.statusCode}
                   </span>
                 </div>
               )}
@@ -380,16 +370,16 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
               </Button>
             </div>
             <div className="p-2 bg-muted rounded font-mono text-xs break-all">
-              {event.url}
+              {event.networkEvent.request.url}
             </div>
           </div>
 
           {/* 匹配的规则 */}
-          {event.matchedRules && event.matchedRules.length > 0 && (
+          {event.networkEvent.matchedRules && event.networkEvent.matchedRules.length > 0 && (
             <div>
               <div className="font-medium mb-2 text-xs text-muted-foreground uppercase">匹配规则</div>
               <div className="space-y-1">
-                {event.matchedRules.map((rule, idx) => (
+                {event.networkEvent.matchedRules.map((rule, idx) => (
                   <div key={idx} className="p-2 bg-muted rounded text-xs flex items-center gap-2">
                     <span className="font-medium">{rule.ruleName || '未知规则'}</span>
                     <span className="text-muted-foreground">→</span>
@@ -404,186 +394,91 @@ function MatchedEventItem({ event, isExpanded, onToggleExpand }: MatchedEventIte
             </div>
           )}
 
-          {/* 请求/响应信息（根据 stage 分开展示） */}
-          {event.stage === 'request' && event.original && event.modified && (
-            <div>
-              <div className="font-medium mb-2 text-xs text-muted-foreground uppercase">请求信息</div>
-              <div className="grid grid-cols-2 gap-3">
-                {/* 原始请求 */}
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">原始</div>
-                  
-                  {/* URL */}
-                  {event.original.url && (
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">URL</div>
-                      <div className="p-2 bg-muted rounded font-mono text-xs break-all max-h-16 overflow-auto">
-                        {event.original.url}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Headers */}
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">Headers</div>
-                    <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
-                      {event.original.headers && Object.keys(event.original.headers).length > 0 ? (
-                        Object.entries(event.original.headers).map(([key, value]) => (
-                          <div key={key} className="truncate">
-                            <span className="text-primary">{key}:</span> {value}
-                          </div>
-                        ))
-                      ) : (
-                        <span className="text-muted-foreground">（无）</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* PostData/Body */}
-                  {(event.original.postData || event.original.body) && (
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Body</div>
-                      <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
-                        {event.original.postData || event.original.body || <span className="text-muted-foreground">（空）</span>}
-                      </div>
-                    </div>
-                  )}
+          {/* 请求信息 */}
+          <div>
+            <div className="font-medium mb-2 text-xs text-muted-foreground uppercase">请求信息</div>
+            <div className="space-y-2">
+              {/* Method */}
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Method</div>
+                <div className="p-2 bg-muted rounded font-mono text-xs">
+                  {event.networkEvent.request.method}
                 </div>
+              </div>
 
-                {/* 修改后请求 */}
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">修改后</div>
-                  
-                  {/* URL */}
-                  {event.modified.url && (
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">URL</div>
-                      <div className="p-2 bg-muted rounded font-mono text-xs break-all max-h-16 overflow-auto">
-                        {event.modified.url}
+              {/* Headers */}
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Headers</div>
+                <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
+                  {event.networkEvent.request.headers && Object.keys(event.networkEvent.request.headers).length > 0 ? (
+                    Object.entries(event.networkEvent.request.headers).map(([key, value]) => (
+                      <div key={key} className="truncate">
+                        <span className="text-primary">{key}:</span> {value}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Headers */}
-                  <div>
-                    <div className="text-xs text-muted-foreground mb-1">Headers</div>
-                    <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
-                      {event.modified.headers && Object.keys(event.modified.headers).length > 0 ? (
-                        Object.entries(event.modified.headers).map(([key, value]) => (
-                          <div key={key} className="truncate">
-                            <span className="text-primary">{key}:</span> {value}
-                          </div>
-                        ))
-                      ) : (
-                        <span className="text-muted-foreground">（无）</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* PostData/Body */}
-                  {(event.modified.postData || event.modified.body) && (
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Body</div>
-                      <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
-                        {event.modified.postData || event.modified.body || <span className="text-muted-foreground">（空）</span>}
-                      </div>
-                    </div>
+                    ))
+                  ) : (
+                    <span className="text-muted-foreground">（无）</span>
                   )}
                 </div>
               </div>
+
+              {/* Body */}
+              {event.networkEvent.request.body && (
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Body</div>
+                  <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
+                    {event.networkEvent.request.body || <span className="text-muted-foreground">（空）</span>}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* 响应信息 */}
-          {event.stage === 'response' && event.original && event.modified && (
+          {event.networkEvent.response && (
             <div>
               <div className="font-medium mb-2 text-xs text-muted-foreground uppercase">响应信息</div>
-              <div className="grid grid-cols-2 gap-3">
-                {/* 原始响应 */}
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">原始</div>
-                  
-                  {/* Status Code */}
-                  {(event.original.statusCode || 0) > 0 && (
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Status Code</div>
-                      <div className="p-2 bg-muted rounded font-mono text-xs">
-                        <span className={(event.original.statusCode || 0) >= 400 ? 'text-red-500' : (event.original.statusCode || 0) >= 300 ? 'text-yellow-500' : 'text-green-500'}>
-                          {event.original.statusCode}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Headers */}
+              <div className="space-y-2">
+                {/* Status Code */}
+                {event.networkEvent.response.statusCode > 0 && (
                   <div>
-                    <div className="text-xs text-muted-foreground mb-1">Headers</div>
-                    <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
-                      {event.original.headers && Object.keys(event.original.headers).length > 0 ? (
-                        Object.entries(event.original.headers).map(([key, value]) => (
-                          <div key={key} className="truncate">
-                            <span className="text-primary">{key}:</span> {value}
-                          </div>
-                        ))
-                      ) : (
-                        <span className="text-muted-foreground">（无）</span>
-                      )}
+                    <div className="text-xs text-muted-foreground mb-1">Status Code</div>
+                    <div className="p-2 bg-muted rounded font-mono text-xs">
+                      <span className={
+                        event.networkEvent.response.statusCode >= 400 ? 'text-red-500' : 
+                        event.networkEvent.response.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
+                      }>
+                        {event.networkEvent.response.statusCode}
+                      </span>
                     </div>
                   </div>
+                )}
 
-                  {/* Body */}
-                  {event.original.body && (
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Body</div>
-                      <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
-                        {event.original.body || <span className="text-muted-foreground">（空）</span>}
-                      </div>
-                    </div>
-                  )}
+                {/* Headers */}
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Headers</div>
+                  <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
+                    {event.networkEvent.response.headers && Object.keys(event.networkEvent.response.headers).length > 0 ? (
+                      Object.entries(event.networkEvent.response.headers).map(([key, value]) => (
+                        <div key={key} className="truncate">
+                          <span className="text-primary">{key}:</span> {value}
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-muted-foreground">（无）</span>
+                    )}
+                  </div>
                 </div>
 
-                {/* 修改后响应 */}
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">修改后</div>
-                  
-                  {/* Status Code */}
-                  {(event.modified.statusCode || 0) > 0 && (
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Status Code</div>
-                      <div className="p-2 bg-muted rounded font-mono text-xs">
-                        <span className={(event.modified.statusCode || 0) >= 400 ? 'text-red-500' : (event.modified.statusCode || 0) >= 300 ? 'text-yellow-500' : 'text-green-500'}>
-                          {event.modified.statusCode}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Headers */}
+                {/* Body */}
+                {event.networkEvent.response.body && (
                   <div>
-                    <div className="text-xs text-muted-foreground mb-1">Headers</div>
-                    <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
-                      {event.modified.headers && Object.keys(event.modified.headers).length > 0 ? (
-                        Object.entries(event.modified.headers).map(([key, value]) => (
-                          <div key={key} className="truncate">
-                            <span className="text-primary">{key}:</span> {value}
-                          </div>
-                        ))
-                      ) : (
-                        <span className="text-muted-foreground">（无）</span>
-                      )}
+                    <div className="text-xs text-muted-foreground mb-1">Body</div>
+                    <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
+                      {event.networkEvent.response.body || <span className="text-muted-foreground">（空）</span>}
                     </div>
                   </div>
-
-                  {/* Body */}
-                  {event.modified.body && (
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Body</div>
-                      <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
-                        {event.modified.body || <span className="text-muted-foreground">（空）</span>}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           )}
@@ -604,7 +499,7 @@ function UnmatchedEventItem({ event, isExpanded, onToggleExpand }: UnmatchedEven
   const [copied, setCopied] = useState(false)
 
   const handleCopyUrl = async () => {
-    await navigator.clipboard.writeText(event.url)
+    await navigator.clipboard.writeText(event.networkEvent.request.url)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -630,38 +525,29 @@ function UnmatchedEventItem({ event, isExpanded, onToggleExpand }: UnmatchedEven
           未匹配
         </Badge>
 
-        {/* 阶段标签 */}
-        <Badge variant="outline" className="text-xs">
-          {event.stage === 'request' ? (
-            <><ArrowRight className="w-3 h-3 mr-0.5" />REQ</>
-          ) : (
-            <><ArrowLeft className="w-3 h-3 mr-0.5" />RES</>
-          )}
-        </Badge>
-
         {/* Method */}
         <span className="font-mono text-xs font-medium px-1.5 py-0.5 rounded bg-muted">
-          {event.method}
+          {event.networkEvent.request.method}
         </span>
 
         {/* URL */}
         <span className="flex-1 text-sm truncate text-muted-foreground font-mono">
-          {event.url}
+          {event.networkEvent.request.url}
         </span>
 
         {/* Status Code (如果有) */}
-        {event.statusCode && (
+        {event.networkEvent.response?.statusCode && (
           <span className={`font-mono text-xs ${
-            event.statusCode >= 400 ? 'text-red-500' : 
-            event.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
+            event.networkEvent.response.statusCode >= 400 ? 'text-red-500' : 
+            event.networkEvent.response.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
           }`}>
-            {event.statusCode}
+            {event.networkEvent.response.statusCode}
           </span>
         )}
 
         {/* 时间 */}
         <span className="text-xs text-muted-foreground shrink-0">
-          {formatTime(event.timestamp)}
+          {formatTime(event.networkEvent.timestamp)}
         </span>
 
         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -674,16 +560,16 @@ function UnmatchedEventItem({ event, isExpanded, onToggleExpand }: UnmatchedEven
           <div className="grid grid-cols-2 gap-2">
             <div>
               <span className="text-muted-foreground">Target:</span>
-              <span className="ml-2 font-mono text-xs">{event.target.slice(0, 20)}...</span>
+              <span className="ml-2 font-mono text-xs">{event.networkEvent.target.slice(0, 20)}...</span>
             </div>
-            {event.statusCode && (
+            {event.networkEvent.response?.statusCode && (
               <div>
                 <span className="text-muted-foreground">Status:</span>
                 <span className={`ml-2 font-mono ${
-                  event.statusCode >= 400 ? 'text-red-500' : 
-                  event.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
+                  event.networkEvent.response.statusCode >= 400 ? 'text-red-500' : 
+                  event.networkEvent.response.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
                 }`}>
-                  {event.statusCode}
+                  {event.networkEvent.response.statusCode}
                 </span>
               </div>
             )}
@@ -698,9 +584,98 @@ function UnmatchedEventItem({ event, isExpanded, onToggleExpand }: UnmatchedEven
               </Button>
             </div>
             <div className="p-2 bg-muted rounded font-mono text-xs break-all">
-              {event.url}
+              {event.networkEvent.request.url}
             </div>
           </div>
+
+          {/* 请求信息 */}
+          <div>
+            <div className="font-medium mb-2 text-xs text-muted-foreground uppercase">请求信息</div>
+            <div className="space-y-2">
+              {/* Method */}
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Method</div>
+                <div className="p-2 bg-muted rounded font-mono text-xs">
+                  {event.networkEvent.request.method}
+                </div>
+              </div>
+
+              {/* Headers */}
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Headers</div>
+                <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
+                  {event.networkEvent.request.headers && Object.keys(event.networkEvent.request.headers).length > 0 ? (
+                    Object.entries(event.networkEvent.request.headers).map(([key, value]) => (
+                      <div key={key} className="truncate">
+                        <span className="text-primary">{key}:</span> {value}
+                      </div>
+                    ))
+                  ) : (
+                    <span className="text-muted-foreground">（无）</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Body */}
+              {event.networkEvent.request.body && (
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Body</div>
+                  <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
+                    {event.networkEvent.request.body || <span className="text-muted-foreground">（空）</span>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 响应信息 */}
+          {event.networkEvent.response && (
+            <div>
+              <div className="font-medium mb-2 text-xs text-muted-foreground uppercase">响应信息</div>
+              <div className="space-y-2">
+                {/* Status Code */}
+                {event.networkEvent.response.statusCode > 0 && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Status Code</div>
+                    <div className="p-2 bg-muted rounded font-mono text-xs">
+                      <span className={
+                        event.networkEvent.response.statusCode >= 400 ? 'text-red-500' : 
+                        event.networkEvent.response.statusCode >= 300 ? 'text-yellow-500' : 'text-green-500'
+                      }>
+                        {event.networkEvent.response.statusCode}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Headers */}
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Headers</div>
+                  <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto">
+                    {event.networkEvent.response.headers && Object.keys(event.networkEvent.response.headers).length > 0 ? (
+                      Object.entries(event.networkEvent.response.headers).map(([key, value]) => (
+                        <div key={key} className="truncate">
+                          <span className="text-primary">{key}:</span> {value}
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-muted-foreground">（无）</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Body */}
+                {event.networkEvent.response.body && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Body</div>
+                    <div className="p-2 bg-muted rounded font-mono text-xs max-h-32 overflow-auto whitespace-pre-wrap">
+                      {event.networkEvent.response.body || <span className="text-muted-foreground">（空）</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="p-2 bg-slate-500/10 rounded text-xs text-muted-foreground">
             此请求未匹配任何规则，已直接放行

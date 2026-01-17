@@ -57,62 +57,57 @@ func (m *Manager) handle(ts *targetSession, ev *fetch.RequestPausedReply) {
 	}
 
 	// 有匹配规则 - 捕获原始数据
-	original := m.captureOriginalData(ts, ev, stage)
+	requestInfo, responseInfo := m.captureOriginalData(ts, ev, stage)
 
 	// 执行所有匹配规则的行为（aggregate 模式）
 	if stage == rulespec.StageRequest {
-		m.executeRequestStageWithTracking(ctx, ts, ev, matchedRules, original, start)
+		m.executeRequestStageWithTracking(ctx, ts, ev, matchedRules, requestInfo, responseInfo, start)
 	} else {
-		m.executeResponseStageWithTracking(ctx, ts, ev, matchedRules, original, start)
+		m.executeResponseStageWithTracking(ctx, ts, ev, matchedRules, requestInfo, responseInfo, start)
 	}
 }
 
 // captureOriginalData 捕获原始请求/响应数据
-func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPausedReply, stage rulespec.Stage) model.RequestResponseData {
-	data := model.RequestResponseData{
+func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPausedReply, stage rulespec.Stage) (model.RequestInfo, model.ResponseInfo) {
+	requestInfo := model.RequestInfo{
+		URL:          ev.Request.URL,
+		Method:       ev.Request.Method,
+		Headers:      make(map[string]string),
+		ResourceType: string(ev.ResourceType),
+	}
+
+	// 解析请求头
+	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
+
+	// 获取请求体
+	if len(ev.Request.PostDataEntries) > 0 {
+		for _, entry := range ev.Request.PostDataEntries {
+			if entry.Bytes != nil {
+				requestInfo.Body += *entry.Bytes
+			}
+		}
+	} else if ev.Request.PostData != nil {
+		requestInfo.Body = *ev.Request.PostData
+	}
+
+	// 响应信息
+	responseInfo := model.ResponseInfo{
 		Headers: make(map[string]string),
 	}
 
-	if stage == rulespec.StageRequest {
-		data.URL = ev.Request.URL
-		data.Method = ev.Request.Method
-		// 资源类型
-		if ev.ResourceType != "" {
-			data.ResourceType = string(ev.ResourceType)
-		}
-		// 解析请求头
-		_ = json.Unmarshal(ev.Request.Headers, &data.Headers)
-		// 获取请求体
-		if len(ev.Request.PostDataEntries) > 0 {
-			for _, entry := range ev.Request.PostDataEntries {
-				if entry.Bytes != nil {
-					data.PostData += *entry.Bytes
-				}
-			}
-			data.Body = data.PostData // Body 和 PostData 同步
-		} else if ev.Request.PostData != nil {
-			data.PostData = *ev.Request.PostData
-			data.Body = data.PostData
-		}
-	} else {
-		// 响应阶段
-		data.URL = ev.Request.URL
-		data.Method = ev.Request.Method
-		if ev.ResourceType != "" {
-			data.ResourceType = string(ev.ResourceType)
-		}
+	if stage == rulespec.StageResponse {
 		if ev.ResponseStatusCode != nil {
-			data.StatusCode = *ev.ResponseStatusCode
+			responseInfo.StatusCode = *ev.ResponseStatusCode
 		}
 		// 响应头
 		for _, h := range ev.ResponseHeaders {
-			data.Headers[h.Name] = h.Value
+			responseInfo.Headers[h.Name] = h.Value
 		}
 		// 响应体需要单独获取
-		data.Body, _ = m.executor.FetchResponseBody(ts.ctx, ts, ev.RequestID)
+		responseInfo.Body, _ = m.executor.FetchResponseBody(ts.ctx, ts, ev.RequestID)
 	}
 
-	return data
+	return requestInfo, responseInfo
 }
 
 // buildRuleMatches 构建规则匹配信息列表
@@ -139,7 +134,8 @@ func (m *Manager) executeRequestStageWithTracking(
 	ts *targetSession,
 	ev *fetch.RequestPausedReply,
 	matchedRules []*rules.MatchedRule,
-	original model.RequestResponseData,
+	requestInfo model.RequestInfo,
+	responseInfo model.ResponseInfo,
 	start time.Time,
 ) {
 	var aggregatedMut *RequestMutation
@@ -161,7 +157,7 @@ func (m *Manager) executeRequestStageWithTracking(
 		if mut.Block != nil {
 			m.executor.ApplyRequestMutation(ctx, ts, ev, mut)
 			// 发送 blocked 事件
-			m.sendMatchedEvent(ts.id, ev, rulespec.StageRequest, "blocked", ruleMatches, original, original)
+			m.sendMatchedEvent(ts.id, ev, rulespec.StageRequest, "blocked", ruleMatches, requestInfo, responseInfo)
 			m.log.Info("请求被阻止", "rule", rule.ID, "url", ev.Request.URL)
 			return
 		}
@@ -176,20 +172,23 @@ func (m *Manager) executeRequestStageWithTracking(
 
 	// 应用聚合后的变更
 	var finalResult string
-	var modified model.RequestResponseData
+	var modifiedRequestInfo model.RequestInfo
+	var modifiedResponseInfo model.ResponseInfo
 
 	if aggregatedMut != nil && hasRequestMutation(aggregatedMut) {
 		m.executor.ApplyRequestMutation(ctx, ts, ev, aggregatedMut)
 		finalResult = "modified"
-		modified = m.captureModifiedRequestData(original, aggregatedMut)
+		modifiedRequestInfo = m.captureModifiedRequestData(requestInfo, aggregatedMut)
+		modifiedResponseInfo = responseInfo
 	} else {
 		m.executor.ContinueRequest(ctx, ts, ev)
 		finalResult = "passed"
-		modified = original
+		modifiedRequestInfo = requestInfo
+		modifiedResponseInfo = responseInfo
 	}
 
 	// 发送匹配事件
-	m.sendMatchedEvent(ts.id, ev, rulespec.StageRequest, finalResult, ruleMatches, original, modified)
+	m.sendMatchedEvent(ts.id, ev, rulespec.StageRequest, finalResult, ruleMatches, modifiedRequestInfo, modifiedResponseInfo)
 	m.log.Debug("请求阶段处理完成", "result", finalResult, "duration", time.Since(start))
 }
 
@@ -199,10 +198,11 @@ func (m *Manager) executeResponseStageWithTracking(
 	ts *targetSession,
 	ev *fetch.RequestPausedReply,
 	matchedRules []*rules.MatchedRule,
-	original model.RequestResponseData,
+	requestInfo model.RequestInfo,
+	responseInfo model.ResponseInfo,
 	start time.Time,
 ) {
-	responseBody := original.Body
+	responseBody := responseInfo.Body
 	var aggregatedMut *ResponseMutation
 	ruleMatches := buildRuleMatches(matchedRules)
 
@@ -233,7 +233,6 @@ func (m *Manager) executeResponseStageWithTracking(
 
 	// 应用聚合后的变更
 	var finalResult string
-	var modified model.RequestResponseData
 
 	if aggregatedMut != nil && hasResponseMutation(aggregatedMut) {
 		// 确保 Body 是最新的
@@ -242,27 +241,26 @@ func (m *Manager) executeResponseStageWithTracking(
 		}
 		m.executor.ApplyResponseMutation(ctx, ts, ev, aggregatedMut)
 		finalResult = "modified"
-		modified = m.captureModifiedResponseData(original, aggregatedMut, responseBody)
+		modifiedResponseInfo := m.captureModifiedResponseData(responseInfo, aggregatedMut, responseBody)
+		// 发送匹配事件
+		m.sendMatchedEvent(ts.id, ev, rulespec.StageResponse, finalResult, ruleMatches, requestInfo, modifiedResponseInfo)
 	} else {
 		m.executor.ContinueResponse(ctx, ts, ev)
 		finalResult = "passed"
-		modified = original
+		// 发送匹配事件
+		m.sendMatchedEvent(ts.id, ev, rulespec.StageResponse, finalResult, ruleMatches, requestInfo, responseInfo)
 	}
-
-	// 发送匹配事件
-	m.sendMatchedEvent(ts.id, ev, rulespec.StageResponse, finalResult, ruleMatches, original, modified)
 	m.log.Debug("响应阶段处理完成", "result", finalResult, "duration", time.Since(start))
 }
 
 // captureModifiedRequestData 捕获修改后的请求数据
-func (m *Manager) captureModifiedRequestData(original model.RequestResponseData, mut *RequestMutation) model.RequestResponseData {
-	modified := model.RequestResponseData{
+func (m *Manager) captureModifiedRequestData(original model.RequestInfo, mut *RequestMutation) model.RequestInfo {
+	modified := model.RequestInfo{
 		URL:          original.URL,
 		Method:       original.Method,
 		ResourceType: original.ResourceType,
 		Headers:      make(map[string]string),
 		Body:         original.Body,
-		PostData:     original.PostData,
 	}
 
 	// 复制原始 headers
@@ -286,21 +284,17 @@ func (m *Manager) captureModifiedRequestData(original model.RequestResponseData,
 	// 应用 body 修改
 	if mut.Body != nil {
 		modified.Body = *mut.Body
-		modified.PostData = *mut.Body // PostData 同步
 	}
 
 	return modified
 }
 
 // captureModifiedResponseData 捕获修改后的响应数据
-func (m *Manager) captureModifiedResponseData(original model.RequestResponseData, mut *ResponseMutation, finalBody string) model.RequestResponseData {
-	modified := model.RequestResponseData{
-		URL:          original.URL,
-		Method:       original.Method,
-		ResourceType: original.ResourceType,
-		StatusCode:   original.StatusCode,
-		Headers:      make(map[string]string),
-		Body:         finalBody,
+func (m *Manager) captureModifiedResponseData(original model.ResponseInfo, mut *ResponseMutation, finalBody string) model.ResponseInfo {
+	modified := model.ResponseInfo{
+		StatusCode: original.StatusCode,
+		Headers:    make(map[string]string),
+		Body:       finalBody,
 	}
 
 	// 复制原始 headers
@@ -465,26 +459,22 @@ func (m *Manager) sendMatchedEvent(
 	stage rulespec.Stage,
 	finalResult string,
 	matchedRules []model.RuleMatch,
-	original, modified model.RequestResponseData,
+	requestInfo model.RequestInfo,
+	responseInfo model.ResponseInfo,
 ) {
-	statusCode := 0
-	if ev.ResponseStatusCode != nil {
-		statusCode = *ev.ResponseStatusCode
-	}
-
 	evt := model.InterceptEvent{
 		IsMatched: true,
 		Matched: &model.MatchedEvent{
-			Target:       target,
-			URL:          ev.Request.URL,
-			Method:       ev.Request.Method,
-			Stage:        string(stage),
-			StatusCode:   statusCode,
-			Timestamp:    time.Now().UnixMilli(),
-			FinalResult:  finalResult,
-			MatchedRules: matchedRules,
-			Original:     original,
-			Modified:     modified,
+			NetworkEvent: model.NetworkEvent{
+				Session:      "", // 会在上层填充
+				Target:       target,
+				Timestamp:    time.Now().UnixMilli(),
+				IsMatched:    true,
+				Request:      requestInfo,
+				Response:     responseInfo,
+				FinalResult:  finalResult,
+				MatchedRules: matchedRules,
+			},
 		},
 	}
 
@@ -496,15 +486,57 @@ func (m *Manager) sendMatchedEvent(
 
 // sendUnmatchedEvent 发送未匹配事件
 func (m *Manager) sendUnmatchedEvent(target model.TargetID, ev *fetch.RequestPausedReply, stage rulespec.Stage, statusCode int) {
+	requestInfo := model.RequestInfo{
+		URL:          ev.Request.URL,
+		Method:       ev.Request.Method,
+		Headers:      make(map[string]string),
+		ResourceType: string(ev.ResourceType),
+	}
+
+	// 解析请求头
+	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
+
+	// 获取请求体
+	if len(ev.Request.PostDataEntries) > 0 {
+		for _, entry := range ev.Request.PostDataEntries {
+			if entry.Bytes != nil {
+				requestInfo.Body += *entry.Bytes
+			}
+		}
+	} else if ev.Request.PostData != nil {
+		requestInfo.Body = *ev.Request.PostData
+	}
+
+	// 响应信息
+	responseInfo := model.ResponseInfo{
+		StatusCode: statusCode,
+		Headers:    make(map[string]string),
+	}
+
+	if stage == rulespec.StageResponse {
+		// 响应头
+		for _, h := range ev.ResponseHeaders {
+			responseInfo.Headers[h.Name] = h.Value
+		}
+		// 响应体需要单独获取（如果没有上下文则跳过）
+		if ev.ResponseStatusCode != nil && len(ev.ResponseHeaders) > 0 {
+			// 在未匹配的情况下，尝试获取响应体，但不依赖于ts
+			// 注意：这里可能会失败，因为可能没有有效的连接来获取响应体
+			responseInfo.Body = "" // 暂时设为空，因为无法在未匹配场景下获取响应体
+		}
+	}
+
 	evt := model.InterceptEvent{
 		IsMatched: false,
 		Unmatched: &model.UnmatchedEvent{
-			Target:     target,
-			URL:        ev.Request.URL,
-			Method:     ev.Request.Method,
-			Stage:      string(stage),
-			StatusCode: statusCode,
-			Timestamp:  time.Now().UnixMilli(),
+			NetworkEvent: model.NetworkEvent{
+				Session:   "", // 会在上层填充
+				Target:    target,
+				Timestamp: time.Now().UnixMilli(),
+				IsMatched: false,
+				Request:   requestInfo,
+				Response:  responseInfo,
+			},
 		},
 	}
 
