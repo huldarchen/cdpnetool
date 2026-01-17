@@ -51,7 +51,7 @@ func (r *ConfigRepo) Update(id uint, name, description, version string, rules []
 		return fmt.Errorf("序列化规则失败: %w", err)
 	}
 
-	return r.db.GormDB().Model(&ConfigRecord{}).Where("id = ?", id).Updates(map[string]interface{}{
+	return r.db.GormDB().Model(&ConfigRecord{}).Where("id = ?", id).Updates(map[string]any{
 		"name":        name,
 		"description": description,
 		"version":     version,
@@ -163,7 +163,7 @@ func (r *ConfigRepo) SaveFromRulespecConfig(id uint, name, description string, c
 
 // Rename 重命名配置
 func (r *ConfigRepo) Rename(id uint, newName string) error {
-	return r.db.GormDB().Model(&ConfigRecord{}).Where("id = ?", id).Updates(map[string]interface{}{
+	return r.db.GormDB().Model(&ConfigRecord{}).Where("id = ?", id).Updates(map[string]any{
 		"name":       newName,
 		"updated_at": time.Now(),
 	}).Error
