@@ -81,15 +81,7 @@ func (m *Manager) captureOriginalData(ts *targetSession, ev *fetch.RequestPaused
 	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
 
 	// 获取请求体
-	if len(ev.Request.PostDataEntries) > 0 {
-		for _, entry := range ev.Request.PostDataEntries {
-			if entry.Bytes != nil {
-				requestInfo.Body += *entry.Bytes
-			}
-		}
-	} else if ev.Request.PostData != nil {
-		requestInfo.Body = *ev.Request.PostData
-	}
+	requestInfo.Body = GetRequestBody(ev)
 
 	// 响应信息
 	responseInfo := model.ResponseInfo{
@@ -496,15 +488,7 @@ func (m *Manager) sendUnmatchedEvent(target model.TargetID, ev *fetch.RequestPau
 	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
 
 	// 获取请求体
-	if len(ev.Request.PostDataEntries) > 0 {
-		for _, entry := range ev.Request.PostDataEntries {
-			if entry.Bytes != nil {
-				requestInfo.Body += *entry.Bytes
-			}
-		}
-	} else if ev.Request.PostData != nil {
-		requestInfo.Body = *ev.Request.PostData
-	}
+	requestInfo.Body = GetRequestBody(ev)
 
 	// 响应信息
 	responseInfo := model.ResponseInfo{

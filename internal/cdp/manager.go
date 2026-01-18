@@ -288,15 +288,7 @@ func (m *Manager) buildEvalContext(ev *fetch.RequestPausedReply) *rules.EvalCont
 	}
 
 	// 获取请求体
-	if len(ev.Request.PostDataEntries) > 0 {
-		for _, entry := range ev.Request.PostDataEntries {
-			if entry.Bytes != nil {
-				bodyText += *entry.Bytes
-			}
-		}
-	} else if ev.Request.PostData != nil {
-		bodyText = *ev.Request.PostData
-	}
+	bodyText = GetRequestBody(ev)
 
 	return &rules.EvalContext{
 		URL:          ev.Request.URL,

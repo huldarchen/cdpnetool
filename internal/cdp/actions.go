@@ -363,19 +363,7 @@ func (e *ActionExecutor) FetchResponseBody(ctx context.Context, ts *targetSessio
 
 // getRequestBody 获取请求体
 func (e *ActionExecutor) getRequestBody(ev *fetch.RequestPausedReply) string {
-	if len(ev.Request.PostDataEntries) > 0 {
-		var sb strings.Builder
-		for _, entry := range ev.Request.PostDataEntries {
-			if entry.Bytes != nil {
-				sb.WriteString(*entry.Bytes)
-			}
-		}
-		return sb.String()
-	}
-	if ev.Request.PostData != nil {
-		return *ev.Request.PostData
-	}
-	return ""
+	return GetRequestBody(ev)
 }
 
 // buildFinalURL 构建最终 URL
