@@ -10,6 +10,7 @@ import (
 
 	"github.com/mafredri/cdp/protocol/fetch"
 	"github.com/mafredri/cdp/protocol/network"
+	"github.com/tidwall/sjson"
 
 	"cdpnetool/pkg/rulespec"
 )
@@ -508,93 +509,41 @@ func toHeaderEntries(h map[string]string) []fetch.HeaderEntry {
 	return out
 }
 
-// applyJSONPatches 应用 JSON Patch 操作
+// applyJSONPatches 应用 JSON Patch 操作，使用 sjson 实现高性能修改
 func applyJSONPatches(body string, patches []rulespec.JSONPatchOp) (string, bool) {
 	if body == "" || len(patches) == 0 {
 		return body, false
 	}
 
-	var data any
-	if err := json.Unmarshal([]byte(body), &data); err != nil {
-		return body, false
-	}
+	currentBody := body
+	modified := false
 
 	for _, patch := range patches {
-		data = applyJSONPatchOp(data, patch)
+		if patch.Path == "" {
+			continue
+		}
+
+		// 将 JSON Patch 路径 (/a/b/c) 转换为 sjson 路径 (a.b.c)
+		path := patch.Path
+		path = strings.TrimPrefix(path, "/")
+		path = strings.ReplaceAll(path, "/", ".")
+
+		var err error
+		switch patch.Op {
+		case "add", "replace":
+			currentBody, err = sjson.Set(currentBody, path, patch.Value)
+			if err == nil {
+				modified = true
+			}
+		case "remove":
+			currentBody, err = sjson.Delete(currentBody, path)
+			if err == nil {
+				modified = true
+			}
+		}
 	}
 
-	result, err := json.Marshal(data)
-	if err != nil {
-		return body, false
-	}
-	return string(result), true
-}
-
-// applyJSONPatchOp 应用单个 JSON Patch 操作
-func applyJSONPatchOp(data any, patch rulespec.JSONPatchOp) any {
-	if patch.Path == "" || !strings.HasPrefix(patch.Path, "/") {
-		return data
-	}
-
-	keys := strings.Split(patch.Path[1:], "/")
-	if len(keys) == 0 {
-		return data
-	}
-
-	switch patch.Op {
-	case "add", "replace":
-		return setJSONPath(data, keys, patch.Value)
-	case "remove":
-		return removeJSONPath(data, keys)
-	default:
-		return data
-	}
-}
-
-// setJSONPath 设置 JSON 路径的值
-func setJSONPath(data any, keys []string, value any) any {
-	if len(keys) == 0 {
-		return value
-	}
-
-	m, ok := data.(map[string]any)
-	if !ok {
-		m = make(map[string]any)
-	}
-
-	if len(keys) == 1 {
-		m[keys[0]] = value
-		return m
-	}
-
-	child, exists := m[keys[0]]
-	if !exists {
-		child = make(map[string]any)
-	}
-	m[keys[0]] = setJSONPath(child, keys[1:], value)
-	return m
-}
-
-// removeJSONPath 移除 JSON 路径的值
-func removeJSONPath(data any, keys []string) any {
-	if len(keys) == 0 {
-		return data
-	}
-
-	m, ok := data.(map[string]any)
-	if !ok {
-		return data
-	}
-
-	if len(keys) == 1 {
-		delete(m, keys[0])
-		return m
-	}
-
-	if child, exists := m[keys[0]]; exists {
-		m[keys[0]] = removeJSONPath(child, keys[1:])
-	}
-	return m
+	return currentBody, modified
 }
 
 // setFormField 设置表单字段

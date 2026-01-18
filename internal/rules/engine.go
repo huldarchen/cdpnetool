@@ -2,13 +2,13 @@
 package rules
 
 import (
-	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
 
 	"cdpnetool/pkg/rulespec"
+
+	"github.com/tidwall/gjson"
 )
 
 // Engine 规则引擎
@@ -246,60 +246,23 @@ func getHeaderCaseInsensitive(headers map[string]string, name string) (string, b
 	return "", false
 }
 
-// evalJsonPath 评估 JSON Path（简化版，只支持 $.a.b.c 格式）
+// evalJsonPath 评估 JSON Path，使用 gjson 支持完整语法
 func evalJsonPath(body, path string) (string, bool) {
 	if body == "" || path == "" {
 		return "", false
 	}
-	// 简单解析 $.xxx.yyy 格式
-	if !strings.HasPrefix(path, "$.") {
+	// 处理 $. 前缀以保持对标准 JSONPath 的兼容性感官，gjson 默认直接从根开始
+	searchPath := path
+	if strings.HasPrefix(path, "$.") {
+		searchPath = path[2:]
+	}
+
+	result := gjson.Get(body, searchPath)
+	if !result.Exists() {
 		return "", false
 	}
-	keys := strings.Split(path[2:], ".")
 
-	var data any
-	if err := json.Unmarshal([]byte(body), &data); err != nil {
-		return "", false
-	}
-
-	current := data
-	for _, key := range keys {
-		switch v := current.(type) {
-		case map[string]any:
-			val, ok := v[key]
-			if !ok {
-				return "", false
-			}
-			current = val
-		default:
-			return "", false
-		}
-	}
-
-	// 转换为字符串
-	switch v := current.(type) {
-	case string:
-		return v, true
-	case float64:
-		// 如果是整数，去掉小数部分
-		if float64(int64(v)) == v {
-			return fmt.Sprintf("%d", int64(v)), true
-		}
-		return fmt.Sprintf("%v", v), true
-	case bool:
-		if v {
-			return "true", true
-		}
-		return "false", true
-	case nil:
-		return "null", true
-	default:
-		b, err := json.Marshal(v)
-		if err != nil {
-			return "", false
-		}
-		return string(b), true
-	}
+	return result.String(), true
 }
 
 // matchRegex 使用缓存的正则进行匹配
