@@ -42,7 +42,6 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// 应用默认值
 	if cfg.Concurrency <= 0 {
 		cfg.Concurrency = 8
 	}
@@ -66,7 +65,6 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 	ses.mgr.SetConcurrency(cfg.Concurrency)
 	ses.mgr.SetRuntime(cfg.BodySizeThreshold, cfg.ProcessTimeoutMS)
 
-	// 验证连接是否有效：尝试获取目标列表
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -149,11 +147,13 @@ func (s *svc) ListTargets(id model.SessionID) ([]model.TargetInfo, error) {
 	if !ok {
 		return nil, errors.New("cdpnetool: session not found")
 	}
+
 	if ses.mgr == nil {
 		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, s.log)
 		ses.mgr.SetConcurrency(ses.cfg.Concurrency)
 		ses.mgr.SetRuntime(ses.cfg.BodySizeThreshold, ses.cfg.ProcessTimeoutMS)
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	return ses.mgr.ListTargets(ctx)

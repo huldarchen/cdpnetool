@@ -52,7 +52,7 @@ type RequestInfo struct {
 	Method       string            `json:"method"`
 	Headers      map[string]string `json:"headers"`
 	Body         string            `json:"body"`
-	ResourceType string            `json:"resourceType,omitempty"` // document/xhr/script/image等
+	ResourceType string            `json:"resourceType,omitempty"`
 }
 
 // ResponseInfo 响应信息
@@ -60,33 +60,33 @@ type ResponseInfo struct {
 	StatusCode int               `json:"statusCode"`
 	Headers    map[string]string `json:"headers"`
 	Body       string            `json:"body"`
-	Timing     ResponseTiming    `json:"timing,omitempty"` // 响应时间信息
+	Timing     ResponseTiming    `json:"timing,omitempty"`
 }
 
 // ResponseTiming 响应时间信息
 type ResponseTiming struct {
-	StartTime int64 `json:"startTime"` // 开始时间
-	EndTime   int64 `json:"endTime"`   // 结束时间
+	StartTime int64 `json:"startTime"`
+	EndTime   int64 `json:"endTime"`
 }
 
 // RuleMatch 规则匹配信息
 type RuleMatch struct {
 	RuleID   string   `json:"ruleId"`
 	RuleName string   `json:"ruleName"`
-	Actions  []string `json:"actions"` // 实际执行的 action 类型列表
+	Actions  []string `json:"actions"`
 }
 
-// MatchedEvent 匹配的请求事件（会存入数据库）
+// MatchedEvent 匹配的请求事件
 type MatchedEvent struct {
 	NetworkEvent
 }
 
-// UnmatchedEvent 未匹配的请求事件（仅内存，不存数据库）
+// UnmatchedEvent 未匹配的请求事件
 type UnmatchedEvent struct {
 	NetworkEvent
 }
 
-// InterceptEvent 统一事件接口（用于通道传输）
+// InterceptEvent 统一事件接口，用于通道传输
 type InterceptEvent struct {
 	IsMatched bool            `json:"isMatched"`
 	Matched   *MatchedEvent   `json:"matched,omitempty"`

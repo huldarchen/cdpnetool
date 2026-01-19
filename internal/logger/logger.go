@@ -15,27 +15,17 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// LogLevel 定义日志级别
 type LogLevel int
 
 const (
-	// LogLevelDebug 调试级别
 	LogLevelDebug LogLevel = iota
-
-	// LogLevelInfo 信息级别
 	LogLevelInfo
-
-	// LogLevelWarn 警告级别
 	LogLevelWarn
-
-	// LogLevelError 错误级别
 	LogLevelError
-
-	// LogLevelNone 禁用日志
 	LogLevelNone
 )
 
-// String 返回日志级别的字符串表示
+// String 返回日志级别的字符串
 func (l LogLevel) String() string {
 	switch l {
 	case LogLevelDebug:
@@ -79,7 +69,6 @@ type DefaultLogger struct {
 
 // NewDefaultLogger 创建默认日志记录器
 func NewDefaultLogger(cfg *config.Config) *DefaultLogger {
-	// 初始化日志级别
 	logLevel := LogLevelDebug
 	switch cfg.Log.Level {
 	case "info":
@@ -90,7 +79,6 @@ func NewDefaultLogger(cfg *config.Config) *DefaultLogger {
 		logLevel = LogLevelError
 	}
 
-	// 根据配置添加写入器
 	writers := make([]io.Writer, 0)
 	for _, writer := range cfg.Log.Writer {
 		switch writer {
@@ -120,7 +108,7 @@ func NewDefaultLogger(cfg *config.Config) *DefaultLogger {
 
 	return &DefaultLogger{
 		level:  logLevel,
-		logger: log.New(multiWriter, "", 0), // 不使用标准库的前缀,我们自己格式化
+		logger: log.New(multiWriter, "", 0),
 	}
 }
 
@@ -216,7 +204,6 @@ func NewZeroLogger(cfg *config.Config) *ZeroLogger {
 		}
 	}
 
-	// 初始化日志级别
 	logLevel := zerolog.DebugLevel
 	switch cfg.Log.Level {
 	case "info":
@@ -227,7 +214,6 @@ func NewZeroLogger(cfg *config.Config) *ZeroLogger {
 		logLevel = zerolog.ErrorLevel
 	}
 
-	// 根据配置添加写入器
 	writers := make([]io.Writer, 0)
 	for _, writer := range cfg.Log.Writer {
 		switch writer {
@@ -296,20 +282,17 @@ func getLogPath() (string, error) {
 
 	switch runtime.GOOS {
 	case "windows":
-		// %APPDATA%/cdpnetool/data.db
 		baseDir = os.Getenv("APPDATA")
 		if baseDir == "" {
 			baseDir = filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Roaming")
 		}
 	case "darwin":
-		// ~/Library/Application Support/cdpnetool/data.db
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
 		baseDir = filepath.Join(home, "Library", "Application Support")
 	default:
-		// Linux: ~/.local/share/cdpnetool/data.db
 		baseDir = os.Getenv("XDG_DATA_HOME")
 		if baseDir == "" {
 			home, err := os.UserHomeDir()

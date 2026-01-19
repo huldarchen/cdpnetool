@@ -37,7 +37,6 @@ type App struct {
 func NewApp() *App {
 	cfg := config.NewConfig()
 	log := logger.NewZeroLogger(cfg)
-	log.Debug("创建 App 实例")
 	return &App{
 		cfg:     cfg,
 		log:     log,
@@ -50,16 +49,14 @@ func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	a.log.Info("应用启动")
 
-	// 初始化数据库
 	l := storage.NewGormLogger(a.log)
 	db, err := storage.NewDB(a.cfg, l)
 	if err != nil {
 		a.log.Err(err, "数据库初始化失败")
 		return
 	}
-	a.db = db
 
-	// 初始化仓库
+	a.db = db
 	a.settingsRepo = storage.NewSettingsRepo(db)
 	a.configRepo = storage.NewConfigRepo(db)
 	a.eventRepo = storage.NewEventRepo(db)
@@ -76,19 +73,16 @@ func (a *App) Shutdown(ctx context.Context) {
 		}
 	}
 
-	// 关闭启动的浏览器
 	if a.browser != nil {
 		if err := a.browser.Stop(2 * time.Second); err != nil {
 			a.log.Err(err, "关闭浏览器失败")
 		}
 	}
 
-	// 停止事件异步写入
 	if a.eventRepo != nil {
 		a.eventRepo.Stop()
 	}
 
-	// 关闭数据库连接
 	if a.db != nil {
 		if err := a.db.Close(); err != nil {
 			a.log.Err(err, "关闭数据库失败")
@@ -109,9 +103,7 @@ type SessionResult struct {
 func (a *App) StartSession(devToolsURL string) SessionResult {
 	a.log.Info("启动会话", "devToolsURL", devToolsURL)
 
-	cfg := model.SessionConfig{
-		DevToolsURL: devToolsURL,
-	}
+	cfg := model.SessionConfig{DevToolsURL: devToolsURL}
 	sid, err := a.service.StartSession(cfg)
 	if err != nil {
 		a.log.Err(err, "启动会话失败")
@@ -139,6 +131,7 @@ func (a *App) StopSession(sessionID string) SessionResult {
 	if a.currentSession == model.SessionID(sessionID) {
 		a.currentSession = ""
 	}
+
 	return SessionResult{Success: true}
 }
 
@@ -161,6 +154,7 @@ func (a *App) ListTargets(sessionID string) TargetListResult {
 		a.log.Err(err, "列出目标失败", "sessionID", sessionID)
 		return TargetListResult{Success: false, Error: err.Error()}
 	}
+
 	return TargetListResult{Targets: targets, Success: true}
 }
 
@@ -218,8 +212,6 @@ func (a *App) BeforeClose(ctx context.Context) bool {
 		return true
 	}
 
-	// 用户选"是"(要退出) -> 允许关闭(返回false)
-	// 用户选"否"(不退出) -> 阻止关闭(返回true)
 	a.log.Debug("用户选择", "result", result)
 	return result == "否"
 }
@@ -252,7 +244,6 @@ func (a *App) ExportConfig(name, rulesJSON string) OperationResult {
 
 // EnableInterception 启用指定会话的网络拦截功能。
 func (a *App) EnableInterception(sessionID string) OperationResult {
-	// 检查是否已经附加了目标
 	targets, err := a.service.ListTargets(model.SessionID(sessionID))
 	hasAttached := false
 	if err == nil {
@@ -322,6 +313,7 @@ func (a *App) GetRuleStats(sessionID string) StatsResult {
 		a.log.Err(err, "获取规则统计失败", "sessionID", sessionID)
 		return StatsResult{Success: false, Error: err.Error()}
 	}
+
 	return StatsResult{Stats: stats, Success: true}
 }
 
@@ -337,7 +329,7 @@ func (a *App) subscribeEvents(sessionID model.SessionID) {
 	for evt := range ch {
 		// 通过 Wails 事件系统推送到前端
 		runtime.EventsEmit(a.ctx, "intercept-event", evt)
-		// 只有匹配的事件才写入数据库
+
 		if evt.IsMatched && evt.Matched != nil && a.eventRepo != nil {
 			evt.Matched.Session = sessionID
 			a.eventRepo.RecordMatched(evt.Matched)
@@ -357,7 +349,6 @@ type LaunchBrowserResult struct {
 func (a *App) LaunchBrowser(headless bool) LaunchBrowserResult {
 	a.log.Info("启动浏览器", "headless", headless)
 
-	// 如果已有浏览器运行，先关闭
 	if a.browser != nil {
 		if err := a.browser.Stop(2 * time.Second); err != nil {
 			a.log.Warn("关闭旧浏览器实例失败", "error", err)
@@ -402,6 +393,7 @@ func (a *App) GetBrowserStatus() LaunchBrowserResult {
 	if a.browser == nil {
 		return LaunchBrowserResult{Success: false}
 	}
+
 	return LaunchBrowserResult{DevToolsURL: a.browser.DevToolsURL, Success: true}
 }
 
@@ -419,6 +411,7 @@ func (a *App) GetAllSettings() SettingsResult {
 		a.log.Err(err, "获取所有设置失败")
 		return SettingsResult{Success: false, Error: err.Error()}
 	}
+
 	return SettingsResult{Settings: settings, Success: true}
 }
 
@@ -433,6 +426,7 @@ func (a *App) SetSetting(key, value string) OperationResult {
 		a.log.Err(err, "设置配置项失败", "key", key)
 		return OperationResult{Success: false, Error: err.Error()}
 	}
+
 	return OperationResult{Success: true}
 }
 
@@ -473,6 +467,7 @@ func (a *App) ListConfigs() ConfigListResult {
 		a.log.Err(err, "列出配置失败")
 		return ConfigListResult{Success: false, Error: err.Error()}
 	}
+
 	return ConfigListResult{Configs: configs, Success: true}
 }
 
@@ -483,6 +478,7 @@ func (a *App) GetConfig(id uint) ConfigResult {
 		a.log.Err(err, "获取配置失败", "id", id)
 		return ConfigResult{Success: false, Error: err.Error()}
 	}
+
 	return ConfigResult{Config: config, Success: true}
 }
 
@@ -496,17 +492,14 @@ type NewConfigResult struct {
 
 // CreateNewConfig 创建一个新的空配置并保存到数据库。
 func (a *App) CreateNewConfig(name string) NewConfigResult {
-	// 使用 rulespec.NewConfig 创建标准配置
 	cfg := rulespec.NewConfig(name)
 
-	// 保存到数据库
 	config, err := a.configRepo.Create(cfg)
 	if err != nil {
 		a.log.Err(err, "创建配置失败", "name", name)
 		return NewConfigResult{Success: false, Error: err.Error()}
 	}
 
-	// 序列化配置 JSON
 	configJSON, err := json.Marshal(cfg)
 	if err != nil {
 		a.log.Err(err, "序列化配置失败")
@@ -519,12 +512,12 @@ func (a *App) CreateNewConfig(name string) NewConfigResult {
 
 // NewRuleResult 表示创建新规则的结果。
 type NewRuleResult struct {
-	RuleJSON string `json:"ruleJson"` // 完整的 rulespec.Rule JSON
+	RuleJSON string `json:"ruleJson"`
 	Success  bool   `json:"success"`
 	Error    string `json:"error,omitempty"`
 }
 
-// GenerateNewRule 生成一个新的空规则，existingCount 为当前规则列表中的规则数量。
+// GenerateNewRule 生成一个新的空规则
 func (a *App) GenerateNewRule(name string, existingCount int) NewRuleResult {
 	rule := rulespec.NewRule(name, existingCount)
 	ruleJSON, err := json.Marshal(rule)
@@ -532,6 +525,7 @@ func (a *App) GenerateNewRule(name string, existingCount int) NewRuleResult {
 		a.log.Err(err, "序列化规则失败")
 		return NewRuleResult{Success: false, Error: err.Error()}
 	}
+
 	return NewRuleResult{RuleJSON: string(ruleJSON), Success: true}
 }
 
@@ -559,6 +553,7 @@ func (a *App) DeleteConfig(id uint) OperationResult {
 		a.log.Err(err, "删除配置失败", "id", id)
 		return OperationResult{Success: false, Error: err.Error()}
 	}
+
 	a.log.Info("配置已删除", "id", id)
 	return OperationResult{Success: true}
 }
@@ -570,7 +565,6 @@ func (a *App) SetActiveConfig(id uint) OperationResult {
 		return OperationResult{Success: false, Error: err.Error()}
 	}
 
-	// 记住上次使用的配置
 	if err := a.settingsRepo.SetLastConfigID(fmt.Sprintf("%d", id)); err != nil {
 		a.log.Warn("保存上次配置 ID 失败", "id", id, "error", err)
 	}
@@ -586,6 +580,7 @@ func (a *App) GetActiveConfig() ConfigResult {
 		a.log.Err(err, "获取激活配置失败")
 		return ConfigResult{Success: false, Error: err.Error()}
 	}
+
 	return ConfigResult{Config: config, Success: true}
 }
 
@@ -595,6 +590,7 @@ func (a *App) RenameConfig(id uint, newName string) OperationResult {
 		a.log.Err(err, "重命名配置失败", "id", id, "newName", newName)
 		return OperationResult{Success: false, Error: err.Error()}
 	}
+
 	a.log.Debug("配置已重命名", "id", id, "newName", newName)
 	return OperationResult{Success: true}
 }

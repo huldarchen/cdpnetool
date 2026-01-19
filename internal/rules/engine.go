@@ -1,4 +1,3 @@
-// Package rules 实现规则引擎核心逻辑
 package rules
 
 import (
@@ -42,7 +41,7 @@ func (e *Engine) GetConfig() *rulespec.Config {
 	return e.config
 }
 
-// EvalContext 评估上下文（基于请求信息）
+// EvalContext 评估上下文
 type EvalContext struct {
 	URL          string            // 请求 URL
 	Method       string            // HTTP 方法
@@ -55,7 +54,7 @@ type EvalContext struct {
 
 // MatchedRule 匹配的规则
 type MatchedRule struct {
-	Rule *rulespec.Rule // 规则引用
+	Rule *rulespec.Rule
 }
 
 // EvalForStage 评估指定阶段的匹配规则，返回按优先级排序的规则列表
@@ -230,7 +229,7 @@ func evalCondition(ctx *EvalContext, c *rulespec.Condition) bool {
 	}
 }
 
-// getHeaderCaseInsensitive 不区分大小写获取 Header
+// getHeaderCaseInsensitive 获取Header
 func getHeaderCaseInsensitive(headers map[string]string, name string) (string, bool) {
 	// 先尝试精确匹配
 	if v, ok := headers[name]; ok {
@@ -251,7 +250,7 @@ func evalJsonPath(body, path string) (string, bool) {
 	if body == "" || path == "" {
 		return "", false
 	}
-	// 处理 $. 前缀以保持对标准 JSONPath 的兼容性感官，gjson 默认直接从根开始
+
 	searchPath := path
 	if strings.HasPrefix(path, "$.") {
 		searchPath = path[2:]
