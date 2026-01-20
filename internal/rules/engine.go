@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"cdpnetool/internal/regexutil"
 	"cdpnetool/pkg/rulespec"
 
 	"github.com/tidwall/gjson"
@@ -17,6 +18,7 @@ type Engine struct {
 	total   int64
 	matched int64
 	byRule  map[string]int64
+	cache   *regexutil.Cache
 }
 
 // New 创建规则引擎
@@ -24,6 +26,7 @@ func New(config *rulespec.Config) *Engine {
 	return &Engine{
 		config: config,
 		byRule: make(map[string]int64),
+		cache:  regexutil.New(),
 	}
 }
 
@@ -80,7 +83,7 @@ func (e *Engine) EvalForStage(ctx *EvalContext, stage rulespec.Stage) []*Matched
 			continue
 		}
 		// 评估匹配条件
-		if matchRule(ctx, &rule.Match) {
+		if e.matchRule(ctx, &rule.Match) {
 			matched = append(matched, &MatchedRule{Rule: rule})
 		}
 	}
@@ -106,11 +109,11 @@ func (e *Engine) EvalForStage(ctx *EvalContext, stage rulespec.Stage) []*Matched
 }
 
 // matchRule 评估匹配规则
-func matchRule(ctx *EvalContext, m *rulespec.Match) bool {
+func (e *Engine) matchRule(ctx *EvalContext, m *rulespec.Match) bool {
 	// allOf: 所有条件都必须满足
 	if len(m.AllOf) > 0 {
 		for i := range m.AllOf {
-			if !evalCondition(ctx, &m.AllOf[i]) {
+			if !e.evalCondition(ctx, &m.AllOf[i]) {
 				return false
 			}
 		}
@@ -119,7 +122,7 @@ func matchRule(ctx *EvalContext, m *rulespec.Match) bool {
 	if len(m.AnyOf) > 0 {
 		anyMatch := false
 		for i := range m.AnyOf {
-			if evalCondition(ctx, &m.AnyOf[i]) {
+			if e.evalCondition(ctx, &m.AnyOf[i]) {
 				anyMatch = true
 				break
 			}
@@ -132,7 +135,7 @@ func matchRule(ctx *EvalContext, m *rulespec.Match) bool {
 }
 
 // evalCondition 评估单个条件
-func evalCondition(ctx *EvalContext, c *rulespec.Condition) bool {
+func (e *Engine) evalCondition(ctx *EvalContext, c *rulespec.Condition) bool {
 	switch c.Type {
 	// URL 条件
 	case rulespec.ConditionURLEquals:
@@ -144,7 +147,7 @@ func evalCondition(ctx *EvalContext, c *rulespec.Condition) bool {
 	case rulespec.ConditionURLContains:
 		return strings.Contains(ctx.URL, c.Value)
 	case rulespec.ConditionURLRegex:
-		return matchRegex(ctx.URL, c.Pattern)
+		return e.matchRegex(ctx.URL, c.Pattern)
 
 	// Method 条件
 	case rulespec.ConditionMethod:
@@ -166,20 +169,20 @@ func evalCondition(ctx *EvalContext, c *rulespec.Condition) bool {
 
 	// Header 条件
 	case rulespec.ConditionHeaderExists:
-		_, ok := getHeaderCaseInsensitive(ctx.Headers, c.Name)
+		_, ok := e.getHeader(ctx.Headers, c.Name)
 		return ok
 	case rulespec.ConditionHeaderNotExists:
-		_, ok := getHeaderCaseInsensitive(ctx.Headers, c.Name)
+		_, ok := e.getHeader(ctx.Headers, c.Name)
 		return !ok
 	case rulespec.ConditionHeaderEquals:
-		v, ok := getHeaderCaseInsensitive(ctx.Headers, c.Name)
+		v, ok := e.getHeader(ctx.Headers, c.Name)
 		return ok && v == c.Value
 	case rulespec.ConditionHeaderContains:
-		v, ok := getHeaderCaseInsensitive(ctx.Headers, c.Name)
+		v, ok := e.getHeader(ctx.Headers, c.Name)
 		return ok && strings.Contains(v, c.Value)
 	case rulespec.ConditionHeaderRegex:
-		v, ok := getHeaderCaseInsensitive(ctx.Headers, c.Name)
-		return ok && matchRegex(v, c.Pattern)
+		v, ok := e.getHeader(ctx.Headers, c.Name)
+		return ok && e.matchRegex(v, c.Pattern)
 
 	// Query 条件（key 统一小写匹配）
 	case rulespec.ConditionQueryExists:
@@ -196,7 +199,7 @@ func evalCondition(ctx *EvalContext, c *rulespec.Condition) bool {
 		return ok && strings.Contains(v, c.Value)
 	case rulespec.ConditionQueryRegex:
 		v, ok := ctx.Query[strings.ToLower(c.Name)]
-		return ok && matchRegex(v, c.Pattern)
+		return ok && e.matchRegex(v, c.Pattern)
 
 	// Cookie 条件（name 统一小写匹配）
 	case rulespec.ConditionCookieExists:
@@ -213,15 +216,15 @@ func evalCondition(ctx *EvalContext, c *rulespec.Condition) bool {
 		return ok && strings.Contains(v, c.Value)
 	case rulespec.ConditionCookieRegex:
 		v, ok := ctx.Cookies[strings.ToLower(c.Name)]
-		return ok && matchRegex(v, c.Pattern)
+		return ok && e.matchRegex(v, c.Pattern)
 
 	// Body 条件
 	case rulespec.ConditionBodyContains:
 		return strings.Contains(ctx.Body, c.Value)
 	case rulespec.ConditionBodyRegex:
-		return matchRegex(ctx.Body, c.Pattern)
+		return e.matchRegex(ctx.Body, c.Pattern)
 	case rulespec.ConditionBodyJsonPath:
-		val, ok := evalJsonPath(ctx.Body, c.Path)
+		val, ok := e.evalJsonPath(ctx.Body, c.Path)
 		return ok && val == c.Value
 
 	default:
@@ -229,8 +232,8 @@ func evalCondition(ctx *EvalContext, c *rulespec.Condition) bool {
 	}
 }
 
-// getHeaderCaseInsensitive 获取Header
-func getHeaderCaseInsensitive(headers map[string]string, name string) (string, bool) {
+// getHeader 获取Header（不区分大小写）
+func (e *Engine) getHeader(headers map[string]string, name string) (string, bool) {
 	// 先尝试精确匹配
 	if v, ok := headers[name]; ok {
 		return v, true
@@ -246,7 +249,7 @@ func getHeaderCaseInsensitive(headers map[string]string, name string) (string, b
 }
 
 // evalJsonPath 评估 JSON Path，使用 gjson 支持完整语法
-func evalJsonPath(body, path string) (string, bool) {
+func (e *Engine) evalJsonPath(body, path string) (string, bool) {
 	if body == "" || path == "" {
 		return "", false
 	}
@@ -265,8 +268,8 @@ func evalJsonPath(body, path string) (string, bool) {
 }
 
 // matchRegex 使用缓存的正则进行匹配
-func matchRegex(s, pattern string) bool {
-	re, err := regexCache.Get(pattern)
+func (e *Engine) matchRegex(s, pattern string) bool {
+	re, err := e.cache.Get(pattern)
 	if err != nil {
 		return false
 	}
