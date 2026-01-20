@@ -1,4 +1,4 @@
-package cdp
+package pool
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"cdpnetool/internal/logger"
 )
 
-// workerPool 并发工作池，用于限制拦截事件的并发处理数量
-type workerPool struct {
+// Pool 并发工作池，用于限制任务的并发处理数量
+type Pool struct {
 	sem         chan struct{}
 	queue       chan func()
 	queueCap    int
@@ -21,27 +21,30 @@ type workerPool struct {
 	stopMonitor chan struct{}
 }
 
-// newWorkerPool 创建工作池，size 为 0 表示无限制
-func newWorkerPool(size int) *workerPool {
+// New 创建工作池，size 为 0 表示无限制，queueCap 为任务排队队列容量
+func New(size int, queueCap int) *Pool {
 	if size <= 0 {
-		return &workerPool{}
+		return &Pool{}
 	}
 
-	// 队列容量 = worker 数量 * 8，提供足够的突发请求缓冲
-	return &workerPool{
+	if queueCap <= 0 {
+		queueCap = size * 8
+	}
+
+	return &Pool{
 		sem:      make(chan struct{}, size),
-		queue:    make(chan func(), size*8),
-		queueCap: size * 8,
+		queue:    make(chan func(), queueCap),
+		queueCap: queueCap,
 	}
 }
 
-// setLogger 设置日志记录器
-func (p *workerPool) setLogger(l logger.Logger) {
+// SetLogger 设置日志记录器
+func (p *Pool) SetLogger(l logger.Logger) {
 	p.log = l
 }
 
-// start 启动工作池，创建固定数量的 worker 协程
-func (p *workerPool) start(ctx context.Context) {
+// Start 启动工作池，创建固定数量 of worker 协程
+func (p *Pool) Start(ctx context.Context) {
 	if p.sem == nil {
 		return
 	}
@@ -52,15 +55,15 @@ func (p *workerPool) start(ctx context.Context) {
 	go p.monitor(ctx)
 }
 
-// stop 停止监控协程
-func (p *workerPool) stop() {
+// Stop 停止监控协程
+func (p *Pool) Stop() {
 	if p.stopMonitor != nil {
 		close(p.stopMonitor)
 	}
 }
 
 // monitor 定期输出工作池状态监控日志
-func (p *workerPool) monitor(ctx context.Context) {
+func (p *Pool) monitor(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -70,7 +73,7 @@ func (p *workerPool) monitor(ctx context.Context) {
 		case <-p.stopMonitor:
 			return
 		case <-ticker.C:
-			qLen, qCap, submit, drop := p.stats()
+			qLen, qCap, submit, drop := p.Stats()
 			if p.log != nil && submit > 0 {
 				usage := float64(qLen) / float64(qCap) * 100
 				dropRate := float64(drop) / float64(submit) * 100
@@ -81,7 +84,7 @@ func (p *workerPool) monitor(ctx context.Context) {
 }
 
 // worker 工作协程，从队列中取任务并执行
-func (p *workerPool) worker(ctx context.Context) {
+func (p *Pool) worker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -94,8 +97,8 @@ func (p *workerPool) worker(ctx context.Context) {
 	}
 }
 
-// submit 提交任务到工作池，返回是否成功入队
-func (p *workerPool) submit(fn func()) bool {
+// Submit 提交任务到工作池，返回是否成功入队
+func (p *Pool) Submit(fn func()) bool {
 	if p.sem == nil {
 		go fn()
 		return true
@@ -119,12 +122,22 @@ func (p *workerPool) submit(fn func()) bool {
 	}
 }
 
-// stats 返回工作池统计信息
-func (p *workerPool) stats() (queueLen, queueCap, totalSubmit, totalDrop int64) {
+// Stats 返回工作池统计信息
+func (p *Pool) Stats() (queueLen, queueCap, totalSubmit, totalDrop int64) {
 	if p.sem == nil {
 		return 0, 0, 0, 0
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return int64(len(p.queue)), int64(p.queueCap), p.totalSubmit, p.totalDrop
+}
+
+// GetQueueCap 返回队列容量
+func (p *Pool) GetQueueCap() int {
+	return p.queueCap
+}
+
+// IsEnabled 检查工作池是否已启用并发限制
+func (p *Pool) IsEnabled() bool {
+	return p.sem != nil
 }

@@ -381,7 +381,7 @@ func (m *Manager) dispatchPaused(ts *targetSession, ev *fetch.RequestPausedReply
 		go m.handle(ts, ev)
 		return
 	}
-	submitted := m.pool.submit(func() {
+	submitted := m.pool.Submit(func() {
 		m.handle(ts, ev)
 	})
 	if !submitted {

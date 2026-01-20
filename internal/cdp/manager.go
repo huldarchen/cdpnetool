@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"cdpnetool/internal/logger"
+	"cdpnetool/internal/pool"
 	"cdpnetool/internal/rules"
 	"cdpnetool/pkg/model"
 	"cdpnetool/pkg/rulespec"
@@ -29,7 +30,7 @@ type Manager struct {
 	executor          *ActionExecutor
 	bodySizeThreshold int64
 	processTimeoutMS  int
-	pool              *workerPool
+	pool              *pool.Pool
 	events            chan model.InterceptEvent
 	targetsMu         sync.Mutex
 	targets           map[model.TargetID]*targetSession
@@ -213,9 +214,9 @@ func (m *Manager) enableTarget(ts *targetSession) error {
 	}
 
 	// 如果已配置 worker pool 且未启动，现在启动
-	if m.pool != nil && m.pool.sem != nil {
-		m.pool.setLogger(m.log)
-		m.pool.start(ts.ctx)
+	if m.pool != nil && m.pool.IsEnabled() {
+		m.pool.SetLogger(m.log)
+		m.pool.Start(ts.ctx)
 	}
 
 	go m.consume(ts)
@@ -426,12 +427,12 @@ func (m *Manager) UpdateRules(cfg *rulespec.Config) {
 	}
 }
 
-// SetConcurrency 配置拦截处理的并发工作协程数
-func (m *Manager) SetConcurrency(n int) {
-	m.pool = newWorkerPool(n)
-	if m.pool != nil && m.pool.sem != nil {
-		m.pool.setLogger(m.log)
-		m.log.Info("并发工作池已配置", "workers", n, "queueCap", m.pool.queueCap)
+// SetConcurrency 配置拦截处理的并发工作协程数和队列容量
+func (m *Manager) SetConcurrency(n int, queueCap int) {
+	m.pool = pool.New(n, queueCap)
+	if m.pool != nil && m.pool.IsEnabled() {
+		m.pool.SetLogger(m.log)
+		m.log.Info("并发工作池已配置", "workers", n, "queueCap", m.pool.GetQueueCap())
 	} else {
 		m.log.Info("并发工作池未限制，使用无界模式")
 	}
@@ -467,5 +468,5 @@ func (m *Manager) GetPoolStats() (queueLen, queueCap, totalSubmit, totalDrop int
 	if m.pool == nil {
 		return 0, 0, 0, 0
 	}
-	return m.pool.stats()
+	return m.pool.Stats()
 }

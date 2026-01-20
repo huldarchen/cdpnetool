@@ -43,26 +43,26 @@ func (s *svc) StartSession(cfg model.SessionConfig) (model.SessionID, error) {
 	defer s.mu.Unlock()
 
 	if cfg.Concurrency <= 0 {
-		cfg.Concurrency = 8
+		cfg.Concurrency = 32
 	}
 	if cfg.BodySizeThreshold <= 0 {
-		cfg.BodySizeThreshold = 1 << 20 // 1MB
+		cfg.BodySizeThreshold = 2 << 20 // 2MB
 	}
 	if cfg.ProcessTimeoutMS <= 0 {
-		cfg.ProcessTimeoutMS = 3000
+		cfg.ProcessTimeoutMS = 5000
 	}
 	if cfg.PendingCapacity <= 0 {
-		cfg.PendingCapacity = 64
+		cfg.PendingCapacity = 256
 	}
 
 	id := model.SessionID(uuid.New().String())
 	ses := &session{
 		id:     id,
 		cfg:    cfg,
-		events: make(chan model.InterceptEvent, 128),
+		events: make(chan model.InterceptEvent, cfg.PendingCapacity),
 	}
 	ses.mgr = cdp.New(cfg.DevToolsURL, ses.events, s.log)
-	ses.mgr.SetConcurrency(cfg.Concurrency)
+	ses.mgr.SetConcurrency(cfg.Concurrency, cfg.PendingCapacity)
 	ses.mgr.SetRuntime(cfg.BodySizeThreshold, cfg.ProcessTimeoutMS)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -111,7 +111,7 @@ func (s *svc) AttachTarget(id model.SessionID, target model.TargetID) error {
 
 	if ses.mgr == nil {
 		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, s.log)
-		ses.mgr.SetConcurrency(ses.cfg.Concurrency)
+		ses.mgr.SetConcurrency(ses.cfg.Concurrency, ses.cfg.PendingCapacity)
 		ses.mgr.SetRuntime(ses.cfg.BodySizeThreshold, ses.cfg.ProcessTimeoutMS)
 	}
 
@@ -150,7 +150,7 @@ func (s *svc) ListTargets(id model.SessionID) ([]model.TargetInfo, error) {
 
 	if ses.mgr == nil {
 		ses.mgr = cdp.New(ses.cfg.DevToolsURL, ses.events, s.log)
-		ses.mgr.SetConcurrency(ses.cfg.Concurrency)
+		ses.mgr.SetConcurrency(ses.cfg.Concurrency, ses.cfg.PendingCapacity)
 		ses.mgr.SetRuntime(ses.cfg.BodySizeThreshold, ses.cfg.ProcessTimeoutMS)
 	}
 
