@@ -1,0 +1,505 @@
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"net/url"
+	"strings"
+	"time"
+
+	"cdpnetool/internal/executor"
+	"cdpnetool/internal/logger"
+	"cdpnetool/internal/mutation"
+	"cdpnetool/internal/protocol"
+	"cdpnetool/internal/rules"
+	"cdpnetool/pkg/domain"
+	"cdpnetool/pkg/rulespec"
+
+	"github.com/mafredri/cdp"
+	"github.com/mafredri/cdp/protocol/fetch"
+)
+
+// Handler 事件处理器，负责协调规则匹配、行为执行和事件发送
+type Handler struct {
+	engine           *rules.Engine
+	executor         *executor.Executor
+	events           chan domain.InterceptEvent
+	processTimeoutMS int
+	log              logger.Logger
+}
+
+// Config 配置选项
+type Config struct {
+	Engine           *rules.Engine
+	Executor         *executor.Executor
+	Events           chan domain.InterceptEvent
+	ProcessTimeoutMS int
+	Logger           logger.Logger
+}
+
+// StageContext 拦截事件阶段上下文
+type StageContext struct {
+	MatchedRules []*rules.MatchedRule
+	RequestInfo  domain.RequestInfo
+	ResponseInfo domain.ResponseInfo
+	Start        time.Time
+}
+
+// New 创建事件处理器
+func New(cfg Config) *Handler {
+	return &Handler{
+		engine:           cfg.Engine,
+		executor:         cfg.Executor,
+		events:           cfg.Events,
+		processTimeoutMS: cfg.ProcessTimeoutMS,
+		log:              cfg.Logger,
+	}
+}
+
+// Handle 处理一次拦截事件并根据规则执行相应动作
+func (h *Handler) Handle(
+	client *cdp.Client,
+	ctx context.Context,
+	targetID domain.TargetID,
+	ev *fetch.RequestPausedReply,
+) {
+	to := h.processTimeoutMS
+	if to <= 0 {
+		to = 3000
+	}
+
+	ctx2, cancel := context.WithTimeout(ctx, time.Duration(to)*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+
+	// 判断阶段
+	stage := rulespec.StageRequest
+	statusCode := 0
+	if ev.ResponseStatusCode != nil {
+		stage = rulespec.StageResponse
+		statusCode = *ev.ResponseStatusCode
+	}
+
+	h.log.Debug("开始处理拦截事件", "stage", stage, "url", ev.Request.URL, "method", ev.Request.Method)
+
+	// 构建评估上下文（基于请求信息）
+	evalCtx := h.buildEvalContext(ev)
+
+	// 评估匹配规则
+	if h.engine == nil {
+		// 无引擎，发送未匹配事件并放行
+		h.sendUnmatchedEvent(targetID, ev, stage, statusCode)
+		h.executor.ContinueRequest(ctx2, client, ev)
+		return
+	}
+
+	matchedRules := h.engine.EvalForStage(evalCtx, stage)
+	if len(matchedRules) == 0 {
+		// 未匹配，发送未匹配事件并放行
+		h.sendUnmatchedEvent(targetID, ev, stage, statusCode)
+		if stage == rulespec.StageRequest {
+			h.executor.ContinueRequest(ctx2, client, ev)
+		} else {
+			h.executor.ContinueResponse(ctx2, client, ev)
+		}
+		h.log.Debug("拦截事件处理完成，无匹配规则", "stage", stage, "duration", time.Since(start))
+		return
+	}
+
+	// 有匹配规则 - 捕获原始数据
+	requestInfo, responseInfo := h.captureOriginalData(client, ctx2, ev, stage)
+
+	// 构造阶段上下文
+	stageCtx := StageContext{
+		MatchedRules: matchedRules,
+		RequestInfo:  requestInfo,
+		ResponseInfo: responseInfo,
+		Start:        start,
+	}
+
+	// 执行所有匹配规则的行为（aggregate 模式）
+	if stage == rulespec.StageRequest {
+		h.executeRequestStageWithTracking(ctx2, client, targetID, ev, stageCtx)
+	} else {
+		h.executeResponseStageWithTracking(ctx2, client, targetID, ev, stageCtx)
+	}
+}
+
+// executeRequestStageWithTracking 执行请求阶段的行为并跟踪变更
+func (h *Handler) executeRequestStageWithTracking(
+	ctx context.Context,
+	client *cdp.Client,
+	targetID domain.TargetID,
+	ev *fetch.RequestPausedReply,
+	stageCtx StageContext,
+) {
+	var aggregatedMut *executor.RequestMutation
+	ruleMatches := buildRuleMatches(stageCtx.MatchedRules)
+
+	for _, matched := range stageCtx.MatchedRules {
+		rule := matched.Rule
+		if len(rule.Actions) == 0 {
+			continue
+		}
+
+		// 执行当前规则的所有行为
+		mut := h.executor.ExecuteRequestActions(rule.Actions, ev)
+		if mut == nil {
+			continue
+		}
+
+		// 检查是否是终结性行为（block）
+		if mut.Block != nil {
+			h.executor.ApplyRequestMutation(ctx, client, ev, mut)
+			// 发送 blocked 事件
+			h.sendMatchedEvent(targetID, "blocked", ruleMatches, stageCtx.RequestInfo, stageCtx.ResponseInfo)
+			h.log.Info("请求被阻止", "rule", rule.ID, "url", ev.Request.URL)
+			return
+		}
+
+		// 聚合变更
+		if aggregatedMut == nil {
+			aggregatedMut = mut
+		} else {
+			mutation.MergeRequestMutation(aggregatedMut, mut)
+		}
+	}
+
+	// 应用聚合后的变更
+	var finalResult string
+	var modifiedRequestInfo domain.RequestInfo
+	var modifiedResponseInfo domain.ResponseInfo
+
+	if aggregatedMut != nil && mutation.HasRequestMutation(aggregatedMut) {
+		h.executor.ApplyRequestMutation(ctx, client, ev, aggregatedMut)
+		finalResult = "modified"
+		modifiedRequestInfo = h.captureModifiedRequestData(stageCtx.RequestInfo, aggregatedMut)
+		modifiedResponseInfo = stageCtx.ResponseInfo
+	} else {
+		h.executor.ContinueRequest(ctx, client, ev)
+		finalResult = "passed"
+		modifiedRequestInfo = stageCtx.RequestInfo
+		modifiedResponseInfo = stageCtx.ResponseInfo
+	}
+
+	// 发送匹配事件
+	h.sendMatchedEvent(targetID, finalResult, ruleMatches, modifiedRequestInfo, modifiedResponseInfo)
+	h.log.Debug("请求阶段处理完成", "result", finalResult, "duration", time.Since(stageCtx.Start))
+}
+
+// executeResponseStageWithTracking 执行响应阶段的行为并跟踪变更
+func (h *Handler) executeResponseStageWithTracking(
+	ctx context.Context,
+	client *cdp.Client,
+	targetID domain.TargetID,
+	ev *fetch.RequestPausedReply,
+	stageCtx StageContext,
+) {
+	responseBody := stageCtx.ResponseInfo.Body
+	var aggregatedMut *executor.ResponseMutation
+	ruleMatches := buildRuleMatches(stageCtx.MatchedRules)
+
+	for _, matched := range stageCtx.MatchedRules {
+		rule := matched.Rule
+		if len(rule.Actions) == 0 {
+			continue
+		}
+
+		// 执行当前规则的所有行为
+		mut := h.executor.ExecuteResponseActions(rule.Actions, ev, responseBody)
+		if mut == nil {
+			continue
+		}
+
+		// 聚合变更
+		if aggregatedMut == nil {
+			aggregatedMut = mut
+		} else {
+			mutation.MergeResponseMutation(aggregatedMut, mut)
+		}
+
+		// 更新 responseBody 供后续规则使用
+		if mut.Body != nil {
+			responseBody = *mut.Body
+		}
+	}
+
+	// 应用聚合后的变更
+	var finalResult string
+
+	if aggregatedMut != nil && mutation.HasResponseMutation(aggregatedMut) {
+		// 确保 Body 是最新的
+		if aggregatedMut.Body == nil && responseBody != "" {
+			aggregatedMut.Body = &responseBody
+		}
+		h.executor.ApplyResponseMutation(ctx, client, ev, aggregatedMut)
+		finalResult = "modified"
+		modifiedResponseInfo := h.captureModifiedResponseData(stageCtx.ResponseInfo, aggregatedMut, responseBody)
+		// 发送匹配事件
+		h.sendMatchedEvent(targetID, finalResult, ruleMatches, stageCtx.RequestInfo, modifiedResponseInfo)
+	} else {
+		h.executor.ContinueResponse(ctx, client, ev)
+		finalResult = "passed"
+		// 发送匹配事件
+		h.sendMatchedEvent(targetID, finalResult, ruleMatches, stageCtx.RequestInfo, stageCtx.ResponseInfo)
+	}
+	h.log.Debug("响应阶段处理完成", "result", finalResult, "duration", time.Since(stageCtx.Start))
+}
+
+// SetEngine 设置规则引擎
+func (h *Handler) SetEngine(engine *rules.Engine) {
+	h.engine = engine
+}
+
+// SetProcessTimeout 设置处理超时时间
+func (h *Handler) SetProcessTimeout(timeoutMS int) {
+	h.processTimeoutMS = timeoutMS
+}
+
+// buildEvalContext 构造规则匹配上下文
+func (h *Handler) buildEvalContext(ev *fetch.RequestPausedReply) *rules.EvalContext {
+	headers := map[string]string{}
+	query := map[string]string{}
+	cookies := map[string]string{}
+	var bodyText string
+	var resourceType string
+
+	if ev.ResourceType != "" {
+		resourceType = string(ev.ResourceType)
+	}
+
+	_ = json.Unmarshal(ev.Request.Headers, &headers)
+	if len(headers) > 0 {
+		normalized := make(map[string]string, len(headers))
+		for k, v := range headers {
+			normalized[strings.ToLower(k)] = v
+		}
+		headers = normalized
+	}
+
+	if ev.Request.URL != "" {
+		if u, err := url.Parse(ev.Request.URL); err == nil {
+			for key, vals := range u.Query() {
+				if len(vals) > 0 {
+					query[strings.ToLower(key)] = vals[0]
+				}
+			}
+		}
+	}
+
+	if v, ok := headers["cookie"]; ok {
+		for name, val := range protocol.ParseCookie(v) {
+			cookies[strings.ToLower(name)] = val
+		}
+	}
+
+	bodyText = protocol.GetRequestBody(ev)
+
+	return &rules.EvalContext{
+		URL:          ev.Request.URL,
+		Method:       ev.Request.Method,
+		ResourceType: resourceType,
+		Headers:      headers,
+		Query:        query,
+		Cookies:      cookies,
+		Body:         bodyText,
+	}
+}
+
+// sendMatchedEvent 发送匹配事件
+func (h *Handler) sendMatchedEvent(
+	targetID domain.TargetID,
+	finalResult string,
+	matchedRules []domain.RuleMatch,
+	requestInfo domain.RequestInfo,
+	responseInfo domain.ResponseInfo,
+) {
+	if h.events == nil {
+		return
+	}
+	evt := domain.InterceptEvent{
+		IsMatched: true,
+		Matched: &domain.MatchedEvent{
+			NetworkEvent: domain.NetworkEvent{
+				Session:      "", // 会在上层填充
+				Target:       targetID,
+				Timestamp:    time.Now().UnixMilli(),
+				IsMatched:    true,
+				Request:      requestInfo,
+				Response:     responseInfo,
+				FinalResult:  finalResult,
+				MatchedRules: matchedRules,
+			},
+		},
+	}
+
+	select {
+	case h.events <- evt:
+	default:
+	}
+}
+
+// sendUnmatchedEvent 发送未匹配事件
+func (h *Handler) sendUnmatchedEvent(
+	targetID domain.TargetID,
+	ev *fetch.RequestPausedReply,
+	stage rulespec.Stage,
+	statusCode int,
+) {
+	if h.events == nil {
+		return
+	}
+
+	requestInfo := domain.RequestInfo{
+		URL:          ev.Request.URL,
+		Method:       ev.Request.Method,
+		Headers:      make(map[string]string),
+		ResourceType: string(ev.ResourceType),
+	}
+
+	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
+	requestInfo.Body = protocol.GetRequestBody(ev)
+
+	responseInfo := domain.ResponseInfo{
+		StatusCode: statusCode,
+		Headers:    make(map[string]string),
+	}
+
+	if stage == rulespec.StageResponse {
+		for _, h := range ev.ResponseHeaders {
+			responseInfo.Headers[h.Name] = h.Value
+		}
+		// 未匹配场景下暂不获取响应体
+		responseInfo.Body = ""
+	}
+
+	evt := domain.InterceptEvent{
+		IsMatched: false,
+		Unmatched: &domain.UnmatchedEvent{
+			NetworkEvent: domain.NetworkEvent{
+				Session:   "", // 会在上层填充
+				Target:    targetID,
+				Timestamp: time.Now().UnixMilli(),
+				IsMatched: false,
+				Request:   requestInfo,
+				Response:  responseInfo,
+			},
+		},
+	}
+
+	select {
+	case h.events <- evt:
+	default:
+	}
+}
+
+// captureOriginalData 捕获原始请求/响应数据
+func (h *Handler) captureOriginalData(
+	client *cdp.Client,
+	ctx context.Context,
+	ev *fetch.RequestPausedReply,
+	stage rulespec.Stage,
+) (domain.RequestInfo, domain.ResponseInfo) {
+	requestInfo := domain.RequestInfo{
+		URL:          ev.Request.URL,
+		Method:       ev.Request.Method,
+		Headers:      make(map[string]string),
+		ResourceType: string(ev.ResourceType),
+	}
+
+	_ = json.Unmarshal(ev.Request.Headers, &requestInfo.Headers)
+	requestInfo.Body = protocol.GetRequestBody(ev)
+
+	responseInfo := domain.ResponseInfo{
+		Headers: make(map[string]string),
+	}
+
+	if stage == rulespec.StageResponse {
+		if ev.ResponseStatusCode != nil {
+			responseInfo.StatusCode = *ev.ResponseStatusCode
+		}
+		for _, h := range ev.ResponseHeaders {
+			responseInfo.Headers[h.Name] = h.Value
+		}
+		// 响应体需要单独获取
+		body, _ := h.executor.FetchResponseBody(ctx, client, ev.RequestID)
+		responseInfo.Body = body
+	}
+
+	return requestInfo, responseInfo
+}
+
+// captureModifiedRequestData 捕获修改后的请求数据
+func (h *Handler) captureModifiedRequestData(original domain.RequestInfo, mut *executor.RequestMutation) domain.RequestInfo {
+	modified := domain.RequestInfo{
+		URL:          original.URL,
+		Method:       original.Method,
+		ResourceType: original.ResourceType,
+		Headers:      make(map[string]string),
+		Body:         original.Body,
+	}
+
+	for k, v := range original.Headers {
+		modified.Headers[k] = v
+	}
+
+	if mut.URL != nil {
+		modified.URL = *mut.URL
+	}
+
+	for _, h := range mut.RemoveHeaders {
+		delete(modified.Headers, h)
+	}
+	for k, v := range mut.Headers {
+		modified.Headers[k] = v
+	}
+
+	if mut.Body != nil {
+		modified.Body = *mut.Body
+	}
+
+	return modified
+}
+
+// captureModifiedResponseData 捕获修改后的响应数据
+func (h *Handler) captureModifiedResponseData(original domain.ResponseInfo, mut *executor.ResponseMutation, finalBody string) domain.ResponseInfo {
+	modified := domain.ResponseInfo{
+		StatusCode: original.StatusCode,
+		Headers:    make(map[string]string),
+		Body:       finalBody,
+	}
+
+	for k, v := range original.Headers {
+		modified.Headers[k] = v
+	}
+
+	if mut.StatusCode != nil {
+		modified.StatusCode = *mut.StatusCode
+	}
+
+	for _, h := range mut.RemoveHeaders {
+		delete(modified.Headers, h)
+	}
+	for k, v := range mut.Headers {
+		modified.Headers[k] = v
+	}
+
+	return modified
+}
+
+// buildRuleMatches 构建规则匹配信息列表
+func buildRuleMatches(matchedRules []*rules.MatchedRule) []domain.RuleMatch {
+	matches := make([]domain.RuleMatch, len(matchedRules))
+	for i, mr := range matchedRules {
+		actionTypes := make([]string, 0, len(mr.Rule.Actions))
+		for _, action := range mr.Rule.Actions {
+			actionTypes = append(actionTypes, string(action.Type))
+		}
+		matches[i] = domain.RuleMatch{
+			RuleID:   mr.Rule.ID,
+			RuleName: mr.Rule.Name,
+			Actions:  actionTypes,
+		}
+	}
+	return matches
+}
