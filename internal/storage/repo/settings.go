@@ -1,25 +1,29 @@
-package storage
+package repo
 
 import (
 	"time"
+
+	"cdpnetool/internal/storage/model"
 
 	"gorm.io/gorm"
 )
 
 // SettingsRepo 设置仓库
 type SettingsRepo struct {
-	db *DB
+	BaseRepository[model.Setting]
 }
 
 // NewSettingsRepo 创建设置仓库实例
-func NewSettingsRepo(db *DB) *SettingsRepo {
-	return &SettingsRepo{db: db}
+func NewSettingsRepo(db *gorm.DB) *SettingsRepo {
+	return &SettingsRepo{
+		BaseRepository: *NewBaseRepository[model.Setting](db),
+	}
 }
 
 // Get 获取设置值
 func (r *SettingsRepo) Get(key string) (string, error) {
-	var setting Setting
-	result := r.db.GormDB().Where("key = ?", key).First(&setting)
+	var setting model.Setting
+	result := r.Db.Where("key = ?", key).First(&setting)
 	if result.Error != nil {
 		return "", result.Error
 	}
@@ -37,23 +41,23 @@ func (r *SettingsRepo) GetWithDefault(key, defaultValue string) string {
 
 // Set 设置值（存在则更新，不存在则创建）
 func (r *SettingsRepo) Set(key, value string) error {
-	setting := Setting{
+	setting := model.Setting{
 		Key:       key,
 		Value:     value,
 		UpdatedAt: time.Now(),
 	}
-	return r.db.GormDB().Save(&setting).Error
+	return r.Db.Save(&setting).Error
 }
 
-// Delete 删除设置
-func (r *SettingsRepo) Delete(key string) error {
-	return r.db.GormDB().Delete(&Setting{}, "key = ?", key).Error
+// DeleteByKey 根据 key 删除设置
+func (r *SettingsRepo) DeleteByKey(key string) error {
+	return r.Db.Delete(&model.Setting{}, "key = ?", key).Error
 }
 
 // GetAll 获取所有设置
 func (r *SettingsRepo) GetAll() (map[string]string, error) {
-	var settings []Setting
-	if err := r.db.GormDB().Find(&settings).Error; err != nil {
+	var settings []model.Setting
+	if err := r.Db.Find(&settings).Error; err != nil {
 		return nil, err
 	}
 
@@ -66,10 +70,10 @@ func (r *SettingsRepo) GetAll() (map[string]string, error) {
 
 // SetMultiple 批量设置
 func (r *SettingsRepo) SetMultiple(kvs map[string]string) error {
-	return r.db.GormDB().Transaction(func(tx *gorm.DB) error {
+	return r.Db.Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
 		for key, value := range kvs {
-			setting := Setting{
+			setting := model.Setting{
 				Key:       key,
 				Value:     value,
 				UpdatedAt: now,
@@ -84,30 +88,30 @@ func (r *SettingsRepo) SetMultiple(kvs map[string]string) error {
 
 // GetDevToolsURL 获取 DevTools URL
 func (r *SettingsRepo) GetDevToolsURL() string {
-	return r.GetWithDefault(SettingKeyDevToolsURL, "http://localhost:9222")
+	return r.GetWithDefault(model.SettingKeyDevToolsURL, "http://localhost:9222")
 }
 
 // SetDevToolsURL 设置 DevTools URL
 func (r *SettingsRepo) SetDevToolsURL(url string) error {
-	return r.Set(SettingKeyDevToolsURL, url)
+	return r.Set(model.SettingKeyDevToolsURL, url)
 }
 
 // GetTheme 获取主题
 func (r *SettingsRepo) GetTheme() string {
-	return r.GetWithDefault(SettingKeyTheme, "system")
+	return r.GetWithDefault(model.SettingKeyTheme, "system")
 }
 
 // SetTheme 设置主题
 func (r *SettingsRepo) SetTheme(theme string) error {
-	return r.Set(SettingKeyTheme, theme)
+	return r.Set(model.SettingKeyTheme, theme)
 }
 
 // GetLastConfigID 获取上次使用的配置 ID
 func (r *SettingsRepo) GetLastConfigID() string {
-	return r.GetWithDefault(SettingKeyLastConfigID, "")
+	return r.GetWithDefault(model.SettingKeyLastConfigID, "")
 }
 
 // SetLastConfigID 设置上次使用的配置 ID
 func (r *SettingsRepo) SetLastConfigID(id string) error {
-	return r.Set(SettingKeyLastConfigID, id)
+	return r.Set(model.SettingKeyLastConfigID, id)
 }

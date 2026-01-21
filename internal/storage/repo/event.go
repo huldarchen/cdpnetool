@@ -1,17 +1,20 @@
-package storage
+package repo
 
 import (
 	"encoding/json"
 	"sync"
 	"time"
 
-	"cdpnetool/pkg/model"
+	dbmodel "cdpnetool/internal/storage/model"
+	pkgmodel "cdpnetool/pkg/model"
+
+	"gorm.io/gorm"
 )
 
 // EventRepo 事件仓库（只存储匹配事件到数据库）
 type EventRepo struct {
-	db        *DB
-	buffer    []MatchedEventRecord
+	BaseRepository[dbmodel.MatchedEventRecord]
+	buffer    []dbmodel.MatchedEventRecord
 	bufferMu  sync.Mutex
 	batchSize int
 	flushCh   chan struct{}
@@ -20,13 +23,13 @@ type EventRepo struct {
 }
 
 // NewEventRepo 创建事件仓库实例
-func NewEventRepo(db *DB) *EventRepo {
+func NewEventRepo(db *gorm.DB) *EventRepo {
 	r := &EventRepo{
-		db:        db,
-		buffer:    make([]MatchedEventRecord, 0, 100),
-		batchSize: 50,
-		flushCh:   make(chan struct{}, 1),
-		stopCh:    make(chan struct{}),
+		BaseRepository: *NewBaseRepository[dbmodel.MatchedEventRecord](db),
+		buffer:         make([]dbmodel.MatchedEventRecord, 0, 100),
+		batchSize:      50,
+		flushCh:        make(chan struct{}, 1),
+		stopCh:         make(chan struct{}),
 	}
 	// 启动异步写入协程
 	r.wg.Add(1)
@@ -62,11 +65,11 @@ func (r *EventRepo) flush() {
 		return
 	}
 	toWrite := r.buffer
-	r.buffer = make([]MatchedEventRecord, 0, 100)
+	r.buffer = make([]dbmodel.MatchedEventRecord, 0, 100)
 	r.bufferMu.Unlock()
 
 	// 批量插入
-	if err := r.db.GormDB().CreateInBatches(toWrite, 100).Error; err != nil {
+	if err := r.Db.CreateInBatches(toWrite, 100).Error; err != nil {
 		// 记录错误但不阻塞
 		_ = err
 	}
@@ -79,13 +82,13 @@ func (r *EventRepo) Stop() {
 }
 
 // RecordMatched 记录匹配事件（异步写入数据库）
-func (r *EventRepo) RecordMatched(evt *model.MatchedEvent) {
+func (r *EventRepo) RecordMatched(evt *pkgmodel.MatchedEvent) {
 	// 序列化规则列表
 	matchedRulesJSON, _ := json.Marshal(evt.MatchedRules)
 	requestJSON, _ := json.Marshal(evt.Request)
 	responseJSON, _ := json.Marshal(evt.Response)
 
-	record := MatchedEventRecord{
+	record := dbmodel.MatchedEventRecord{
 		SessionID:        string(evt.Session),
 		TargetID:         string(evt.Target),
 		URL:              evt.Request.URL,
@@ -125,8 +128,8 @@ type QueryOptions struct {
 }
 
 // Query 查询匹配事件历史
-func (r *EventRepo) Query(opts QueryOptions) ([]MatchedEventRecord, int64, error) {
-	query := r.db.GormDB().Model(&MatchedEventRecord{})
+func (r *EventRepo) Query(opts QueryOptions) ([]dbmodel.MatchedEventRecord, int64, error) {
+	query := r.Db.Model(&dbmodel.MatchedEventRecord{})
 
 	// 应用过滤条件
 	if opts.SessionID != "" {
@@ -162,7 +165,7 @@ func (r *EventRepo) Query(opts QueryOptions) ([]MatchedEventRecord, int64, error
 		opts.Limit = 1000
 	}
 
-	var records []MatchedEventRecord
+	var records []dbmodel.MatchedEventRecord
 	err := query.Order("timestamp DESC").
 		Offset(opts.Offset).
 		Limit(opts.Limit).
@@ -171,25 +174,15 @@ func (r *EventRepo) Query(opts QueryOptions) ([]MatchedEventRecord, int64, error
 	return records, total, err
 }
 
-// GetByID 根据ID获取事件
-func (r *EventRepo) GetByID(id uint) (*MatchedEventRecord, error) {
-	var record MatchedEventRecord
-	err := r.db.GormDB().First(&record, id).Error
-	if err != nil {
-		return nil, err
-	}
-	return &record, nil
-}
-
 // DeleteOldEvents 删除旧事件（数据清理）
 func (r *EventRepo) DeleteOldEvents(beforeTimestamp int64) (int64, error) {
-	result := r.db.GormDB().Where("timestamp < ?", beforeTimestamp).Delete(&MatchedEventRecord{})
+	result := r.Db.Where("timestamp < ?", beforeTimestamp).Delete(&dbmodel.MatchedEventRecord{})
 	return result.RowsAffected, result.Error
 }
 
 // DeleteBySession 删除指定会话的事件
 func (r *EventRepo) DeleteBySession(sessionID string) error {
-	return r.db.GormDB().Where("session_id = ?", sessionID).Delete(&MatchedEventRecord{}).Error
+	return r.Db.Where("session_id = ?", sessionID).Delete(&dbmodel.MatchedEventRecord{}).Error
 }
 
 // CleanupOldEvents 根据保留天数清理旧事件
@@ -203,5 +196,5 @@ func (r *EventRepo) CleanupOldEvents(retentionDays int) (int64, error) {
 
 // ClearAll 清空所有事件
 func (r *EventRepo) ClearAll() error {
-	return r.db.GormDB().Where("1 = 1").Delete(&MatchedEventRecord{}).Error
+	return r.Db.Where("1 = 1").Delete(&dbmodel.MatchedEventRecord{}).Error
 }
