@@ -13,19 +13,26 @@ import (
 
 // Options 数据库配置选项
 type Options struct {
-	// Name 数据库文件名
+	// Name 数据库文件名（如果指定了 FullPath，则忽略此项）
 	Name string
+	// FullPath 数据库完整绝对路径（如果指定，则优先使用此路径）
+	FullPath string
 	// Prefix 表前缀
 	Prefix string
 	// Logger GORM 日志实现
 	Logger logger.Interface
 }
 
-// New 创建并初始化数据库连接
+// New 创建并初始化数据库连接。
+// 它会根据 Options 中提供的路径信息打开 SQLite 数据库，并配置命名策略和连接池。
 func New(opts Options) (*gorm.DB, error) {
-	dbPath, err := GetDefaultPath(opts.Name)
-	if err != nil {
-		return nil, err
+	dbPath := opts.FullPath
+	if dbPath == "" {
+		var err error
+		dbPath, err = GetDefaultPath(opts.Name)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 确保数据库目录存在
