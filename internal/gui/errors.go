@@ -86,9 +86,10 @@ func (a *App) TranslateError(err error) (code, message string) {
 	// 处理网络相关错误
 	errStr := err.Error()
 	if strings.Contains(errStr, "connection refused") ||
-		strings.Contains(errStr, "dial tcp") {
+		strings.Contains(errStr, "dial tcp") ||
+		strings.Contains(errStr, "websocket: bad handshake") {
 		a.log.Err(err, "网络连接错误")
-		return CodeNetworkError, "网络连接失败，请检查服务是否正在运行"
+		return CodeNetworkError, "无法连接到浏览器，请确保浏览器已开启 DevTools 远程调试"
 	}
 
 	if strings.Contains(errStr, "timeout") ||

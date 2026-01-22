@@ -31,6 +31,8 @@ import {
   ChevronRight
 } from 'lucide-react'
 
+import type { ApiResponse, SessionData, TargetListData, BrowserData, EmptyData, TargetInfo } from '@/types/api'
+
 // 配置记录类型
 interface ConfigRecord {
   id: number           // 数据库主键ID
@@ -43,44 +45,39 @@ interface ConfigRecord {
   updatedAt: string
 }
 
-interface OperationResult {
-  success: boolean
-  error?: string
-}
-
-// Wails 生成的绑定（需要在 wails dev 后生成）
+// Wails 生成的绑定
 declare global {
   interface Window {
     go: {
       gui: {
         App: {
-          StartSession: (url: string) => Promise<{ sessionId: string; success: boolean; error?: string }>
-          StopSession: (id: string) => Promise<{ success: boolean; error?: string }>
-          ListTargets: (id: string) => Promise<{ targets: any[]; success: boolean; error?: string }>
-          AttachTarget: (sid: string, tid: string) => Promise<{ success: boolean; error?: string }>
-          DetachTarget: (sid: string, tid: string) => Promise<{ success: boolean; error?: string }>
-          EnableInterception: (id: string) => Promise<{ success: boolean; error?: string }>
-          DisableInterception: (id: string) => Promise<{ success: boolean; error?: string }>
-          LoadRules: (id: string, json: string) => Promise<{ success: boolean; error?: string }>
-          GetRuleStats: (id: string) => Promise<{ stats: any; success: boolean; error?: string }>
-          ApproveRequest: (itemId: string, mutationsJson: string) => Promise<{ success: boolean; error?: string }>
-          ApproveResponse: (itemId: string, mutationsJson: string) => Promise<{ success: boolean; error?: string }>
-          Reject: (itemId: string) => Promise<{ success: boolean; error?: string }>
-          LaunchBrowser: (headless: boolean) => Promise<{ devToolsUrl: string; success: boolean; error?: string }>
-          CloseBrowser: () => Promise<{ success: boolean; error?: string }>
-          GetBrowserStatus: () => Promise<{ devToolsUrl: string; success: boolean; error?: string }>
-          ListConfigs: () => Promise<{ configs: ConfigRecord[]; success: boolean; error?: string }>
-          GetConfig: (id: number) => Promise<{ config: ConfigRecord; success: boolean; error?: string }>
-          SaveConfig: (id: number, configJson: string) => Promise<{ config: ConfigRecord; success: boolean; error?: string }>
-          DeleteConfig: (id: number) => Promise<{ success: boolean; error?: string }>
-          SetActiveConfig: (id: number) => Promise<{ success: boolean; error?: string }>
-          GetActiveConfig: () => Promise<{ config: ConfigRecord | null; success: boolean; error?: string }>
-          RenameConfig: (id: number, newName: string) => Promise<{ success: boolean; error?: string }>
+          StartSession: (url: string) => Promise<ApiResponse<SessionData>>
+          StopSession: (id: string) => Promise<ApiResponse<EmptyData>>
+          ListTargets: (id: string) => Promise<ApiResponse<TargetListData>>
+          AttachTarget: (sid: string, tid: string) => Promise<ApiResponse<EmptyData>>
+          DetachTarget: (sid: string, tid: string) => Promise<ApiResponse<EmptyData>>
+          EnableInterception: (id: string) => Promise<ApiResponse<EmptyData>>
+          DisableInterception: (id: string) => Promise<ApiResponse<EmptyData>>
+          LoadRules: (id: string, json: string) => Promise<ApiResponse<EmptyData>>
+          GetRuleStats: (id: string) => Promise<ApiResponse<{ stats: any }>>
+          ApproveRequest: (itemId: string, mutationsJson: string) => Promise<ApiResponse<EmptyData>>
+          ApproveResponse: (itemId: string, mutationsJson: string) => Promise<ApiResponse<EmptyData>>
+          Reject: (itemId: string) => Promise<ApiResponse<EmptyData>>
+          LaunchBrowser: (headless: boolean) => Promise<ApiResponse<BrowserData>>
+          CloseBrowser: () => Promise<ApiResponse<EmptyData>>
+          GetBrowserStatus: () => Promise<ApiResponse<BrowserData>>
+          ListConfigs: () => Promise<ApiResponse<{ configs: ConfigRecord[] }>>
+          GetConfig: (id: number) => Promise<ApiResponse<{ config: ConfigRecord }>>
+          SaveConfig: (id: number, configJson: string) => Promise<ApiResponse<{ config: ConfigRecord }>>
+          DeleteConfig: (id: number) => Promise<ApiResponse<EmptyData>>
+          SetActiveConfig: (id: number) => Promise<ApiResponse<EmptyData>>
+          GetActiveConfig: (id: number) => Promise<ApiResponse<{ config: ConfigRecord | null }>>
+          RenameConfig: (id: number, newName: string) => Promise<ApiResponse<EmptyData>>
           SetDirty: (dirty: boolean) => Promise<void>
-          ExportConfig: (name: string, json: string) => Promise<OperationResult>
-          ImportConfig: (json: string) => Promise<{ config: ConfigRecord; success: boolean; error?: string }>
-          CreateNewConfig: (name: string) => Promise<{ config: ConfigRecord; configJson: string; success: boolean; error?: string }>
-          GenerateNewRule: (name: string, existingCount: number) => Promise<{ ruleJson: string; success: boolean; error?: string }>
+          ExportConfig: (name: string, json: string) => Promise<ApiResponse<EmptyData>>
+          ImportConfig: (json: string) => Promise<ApiResponse<{ config: ConfigRecord }>>
+          CreateNewConfig: (name: string) => Promise<ApiResponse<{ config: ConfigRecord; configJson: string }>>
+          GenerateNewRule: (name: string, existingCount: number) => Promise<ApiResponse<{ ruleJson: string }>>
         }
       }
     }
@@ -91,7 +88,7 @@ function App() {
   const { 
     devToolsURL, 
     setDevToolsURL, 
-    currentSessionId, 
+    currentSessionId: sessionId, 
     setCurrentSession,
     isConnected,
     setConnected,
@@ -120,18 +117,18 @@ function App() {
     setIsLaunchingBrowser(true)
     try {
       const result = await window.go?.gui?.App?.LaunchBrowser(false)
-      if (result?.success) {
-        setDevToolsURL(result.devToolsUrl)
+      if (result?.success && result.data) {
+        setDevToolsURL(result.data.devToolsUrl)
         toast({
           variant: 'success',
           title: '浏览器已启动',
-          description: `DevTools URL: ${result.devToolsUrl}`,
+          description: `DevTools URL: ${result.data.devToolsUrl}`,
         })
       } else {
         toast({
           variant: 'destructive',
           title: '启动失败',
-          description: result?.error || '无法启动浏览器',
+          description: result?.message || '无法启动浏览器',
         })
       }
     } catch (e) {
@@ -147,10 +144,10 @@ function App() {
 
   // 连接/断开会话
   const handleConnect = async () => {
-    if (isConnected && currentSessionId) {
+    if (isConnected && sessionId) {
       // 断开
       try {
-        const result = await window.go?.gui?.App?.StopSession(currentSessionId)
+        const result = await window.go?.gui?.App?.StopSession(sessionId)
         if (result?.success) {
           setConnected(false)
           setCurrentSession(null)
@@ -163,7 +160,7 @@ function App() {
           toast({
             variant: 'destructive',
             title: '断开失败',
-            description: result?.error,
+            description: result?.message,
           })
         }
       } catch (e) {
@@ -178,28 +175,21 @@ function App() {
       setIsLoading(true)
       try {
         const result = await window.go?.gui?.App?.StartSession(devToolsURL)
-        if (result?.success) {
-          setCurrentSession(result.sessionId)
+        if (result?.success && result.data) {
+          setCurrentSession(result.data.sessionId)
           setConnected(true)
           toast({
             variant: 'success',
             title: '连接成功',
-            description: `会话 ID: ${result.sessionId.slice(0, 8)}...`,
+            description: `会话 ID: ${result.data.sessionId.slice(0, 8)}...`,
           })
           // 自动获取目标列表
-          await refreshTargets(result.sessionId)
+          await refreshTargets(result.data.sessionId)
         } else {
-          // 优化连接失败提示
-          let errorMessage = result?.error || '连接失败'
-          if (errorMessage.includes('connection refused') || errorMessage.includes('dial tcp') || errorMessage.includes('ECONNREFUSED')) {
-            errorMessage = '无法连接到浏览器，请先点击「启动浏览器」按钮启动一个浏览器实例'
-          } else if (errorMessage.includes('invalid') || errorMessage.includes('Invalid')) {
-            errorMessage = 'DevTools URL 格式无效，请检查 URL 是否正确'
-          }
           toast({
             variant: 'destructive',
             title: '连接失败',
-            description: errorMessage,
+            description: result?.message || '连接失败',
           })
         }
       } catch (e) {
@@ -215,14 +205,14 @@ function App() {
   }
 
   // 刷新目标列表
-  const refreshTargets = async (sessionId?: string) => {
-    const sid = sessionId || currentSessionId
+  const refreshTargets = async (sessionID?: string) => {
+    const sid = sessionID || sessionId
     if (!sid) return
     
     try {
       const result = await window.go?.gui?.App?.ListTargets(sid)
-      if (result?.success) {
-        setTargets(result.targets || [])
+      if (result?.success && result.data) {
+        setTargets(result.data.targets || [])
       }
     } catch (e) {
       console.error('List targets error:', e)
@@ -231,14 +221,14 @@ function App() {
 
   // 附加/移除目标
   const handleToggleTarget = async (targetId: string) => {
-    if (!currentSessionId) return
+    if (!sessionId) return
     
     const isCurrentlyAttached = attachedTargetId === targetId
     
     try {
       // 1. 如果正在拦截，切换任何目标状态前必须先停止拦截（保证前后端一致）
       if (isIntercepting) {
-        await window.go?.gui?.App?.DisableInterception(currentSessionId)
+        await window.go?.gui?.App?.DisableInterception(sessionId)
         setIntercepting(false)
         setActiveConfigId(null)
         toast({ title: '配置已禁用', description: '修改附着目标时，拦截已自动停止' })
@@ -246,29 +236,29 @@ function App() {
 
       // 2. 如果点击的是当前已附着的目标 -> 执行“分离”
       if (isCurrentlyAttached) {
-        const result = await window.go?.gui?.App?.DetachTarget(currentSessionId, targetId)
+        const result = await window.go?.gui?.App?.DetachTarget(sessionId, targetId)
         if (result?.success) {
           setAttachedTargetId(null)
           toast({ variant: 'success', title: '已移除目标' })
         } else {
-          toast({ variant: 'destructive', title: '移除失败', description: result?.error })
+          toast({ variant: 'destructive', title: '移除失败', description: result?.message })
         }
         return
       }
 
       // 3. 如果点击的是新目标 -> 先分离旧的（如果有），再附着新的
       if (attachedTargetId) {
-        await window.go?.gui?.App?.DetachTarget(currentSessionId, attachedTargetId)
-        // 不需要在这里 setAttachedTargetId(null)，因为后面紧接着会 set 新的
+        await window.go?.gui?.App?.DetachTarget(sessionId, attachedTargetId)
+        // 不需要在这里 setAttachedTargetId(null)，因为后面紧接着会 set 新s
       }
 
-      const result = await window.go?.gui?.App?.AttachTarget(currentSessionId, targetId)
+      const result = await window.go?.gui?.App?.AttachTarget(sessionId, targetId)
       if (result?.success) {
         setAttachedTargetId(targetId)
         toast({ variant: 'success', title: '已切换并附加新目标' })
       } else {
         setAttachedTargetId(null) // 这种情况下旧的已断开，新的没上，干脆重置
-        toast({ variant: 'destructive', title: '附加新目标失败', description: result?.error })
+        toast({ variant: 'destructive', title: '附加新目标失败', description: result?.message })
       }
     } catch (e) {
       toast({ variant: 'destructive', title: '操作错误', description: String(e) })
@@ -391,7 +381,7 @@ function App() {
           {/* 规则面板 */}
           <TabsContent value="rules" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
             <RulesPanel 
-              sessionId={currentSessionId}
+              sessionId={sessionId}
               isConnected={isConnected}
               attachedTargetId={attachedTargetId}
               setIntercepting={setIntercepting}
@@ -416,7 +406,7 @@ function App() {
       <div className="h-6 border-t px-4 flex items-center text-xs text-muted-foreground shrink-0">
         <span>cdpnetool v1.0.0</span>
         <span className="mx-2">|</span>
-        <span>Session: {currentSessionId?.slice(0, 8) || '-'}</span>
+        <span>Session: {sessionId?.slice(0, 8) || '-'}</span>
       </div>
       
       {/* Toast 通知 */}
@@ -533,11 +523,11 @@ function RulesPanel({ sessionId, isConnected, attachedTargetId, setIntercepting 
       }
       
       const result = await window.go.gui.App.ListConfigs()
-      if (result?.success) {
-        setRuleSets(result.configs || [])
+      if (result?.success && result.data) {
+        setRuleSets(result.data.configs || [])
         // 加载第一个配置到编辑器，但不自动设置为激活状态，用户需要手动启用配置
-        if (result.configs && result.configs.length > 0) {
-          loadRuleSetData(result.configs[0])
+        if (result.data.configs && result.data.configs.length > 0) {
+          loadRuleSetData(result.data.configs[0])
         } else {
           setRuleSet(createEmptyConfig())
         }
@@ -645,18 +635,20 @@ function RulesPanel({ sessionId, isConnected, attachedTargetId, setIntercepting 
   const handleCreateRuleSet = async () => {
     try {
       const result = await window.go?.gui?.App?.CreateNewConfig('新配置')
-      if (result?.success && result.config && result.configJson) {
+      if (result?.success && result.data) {
         await loadRuleSets()
         // 直接使用后端返回的完整 JSON，而不是数据库记录
-        const newConfig = JSON.parse(result.configJson) as Config
+        const newConfig = JSON.parse(result.data.configJson) as Config
         setRuleSet(newConfig)
-        setCurrentRuleSetId(result.config.id)
-        setCurrentRuleSetName(result.config.name)
-        setJsonEditorContent(result.configJson)  // 同步 JSON 编辑器
+        setCurrentRuleSetId(result.data.config.id)
+        setCurrentRuleSetName(result.data.config.name)
+        setJsonEditorContent(result.data.configJson)  // 同步 JSON 编辑器
         setJsonError(null)
-        await window.go?.gui?.App?.SetActiveConfig(result.config.id)
+        await window.go?.gui?.App?.SetActiveConfig(result.data.config.id)
         updateDirty(false)
         toast({ variant: 'success', title: '新配置已创建' })
+      } else {
+        toast({ variant: 'destructive', title: '创建失败', description: result?.message })
       }
     } catch (e) {
       toast({ variant: 'destructive', title: '创建失败', description: String(e) })
@@ -698,6 +690,8 @@ function RulesPanel({ sessionId, isConnected, attachedTargetId, setIntercepting 
           }
         }
         toast({ variant: 'success', title: '配置已删除' })
+      } else {
+        toast({ variant: 'destructive', title: '删除失败', description: result?.message })
       }
     } catch (e) {
       toast({ variant: 'destructive', title: '删除失败', description: String(e) })
@@ -741,14 +735,14 @@ function RulesPanel({ sessionId, isConnected, attachedTargetId, setIntercepting 
         const configJson = config.configJson || JSON.stringify({ version: '1.0', rules: [] })
         const loadResult = await window.go?.gui?.App?.LoadRules(sessionId!, configJson)
         if (!loadResult?.success) {
-          toast({ variant: 'destructive', title: '加载规则失败', description: loadResult?.error })
+          toast({ variant: 'destructive', title: '加载规则失败', description: loadResult?.message })
           return
         }
         
         // 启用拦截
         const enableResult = await window.go?.gui?.App?.EnableInterception(sessionId!)
         if (!enableResult?.success) {
-          toast({ variant: 'destructive', title: '启用拦截失败', description: enableResult?.error })
+          toast({ variant: 'destructive', title: '启用拦截失败', description: enableResult?.message })
           return
         }
         
@@ -792,13 +786,15 @@ function RulesPanel({ sessionId, isConnected, attachedTargetId, setIntercepting 
   const handleAddRule = async () => {
     try {
       const result = await window.go?.gui?.App?.GenerateNewRule('新规则', ruleSet.rules.length)
-      if (result?.success) {
-        const newRule = JSON.parse(result.ruleJson) as Rule
+      if (result?.success && result.data) {
+        const newRule = JSON.parse(result.data.ruleJson) as Rule
         setRuleSet({
           ...ruleSet,
           rules: [...ruleSet.rules, newRule]
         })
         updateDirty(true)
+      } else {
+        toast({ variant: 'destructive', title: '添加失败', description: result?.message })
       }
     } catch (e) {
       // 回退到前端生成
@@ -842,12 +838,12 @@ function RulesPanel({ sessionId, isConnected, attachedTargetId, setIntercepting 
       )
       
       if (!saveResult?.success) {
-        toast({ variant: 'destructive', title: '保存失败', description: saveResult?.error })
+        toast({ variant: 'destructive', title: '保存失败', description: saveResult?.message })
         return
       }
       
-      if (saveResult.config) {
-        setCurrentRuleSetId(saveResult.config.id)
+      if (saveResult.data && saveResult.data.config) {
+        setCurrentRuleSetId(saveResult.data.config.id)
       }
       
       updateDirty(false)
@@ -872,7 +868,7 @@ function RulesPanel({ sessionId, isConnected, attachedTargetId, setIntercepting 
     const json = JSON.stringify(ruleSet, null, 2)
     const result = await window.go?.gui?.App?.ExportConfig(currentRuleSetName || "ruleset", json)
     if (result && !result.success) {
-      toast({ variant: 'destructive', title: '导出失败', description: result.error })
+      toast({ variant: 'destructive', title: '导出失败', description: result.message })
     } else if (result && result.success) {
       toast({ variant: 'success', title: '配置导出成功' })
     }
