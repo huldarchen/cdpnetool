@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 	"sync"
@@ -17,6 +18,11 @@ import (
 
 	"github.com/mafredri/cdp"
 	"github.com/mafredri/cdp/protocol/fetch"
+)
+
+const (
+	// MaxCaptureSize 允许采集和修改响应体的最大限制 (2MB)
+	MaxCaptureSize = 2 * 1024 * 1024
 )
 
 // Handler 事件处理器，负责协调规则匹配、行为执行和全周期事件合并
@@ -142,7 +148,17 @@ func (h *Handler) HandleRequest(
 		h.executor.ContinueRequest(ctx, client, ev)
 	}
 
-	// 3. 入池暂存
+	// 3. 安全预判：如果是天生的长连接（WebSocket/SSE），不入池（因为没有可采集的响应体）
+	if isLongConnectionType(ev) {
+		l.Debug("检测到长连接请求，跳过响应阶段拦截", "type", ev.ResourceType)
+		if h.collectUnmatched || len(ruleMatches) > 0 {
+			originalInfo := h.captureRequestData(ev)
+			h.emitRequestEvent(targetID, "passed", ruleMatches, originalInfo, mutation, start, l)
+		}
+		return
+	}
+
+	// 4. 普通请求入池暂存，等待响应阶段
 	h.saveToPool(ev, mutation, ruleMatches, true, traceID)
 }
 
@@ -190,9 +206,19 @@ func (h *Handler) HandleResponse(
 	start := pending.StartTime
 	l = l.With("traceID", pending.TraceID)
 
-	// 2. 无论是否匹配，强制采集响应体（满足用户完整性需求）
+	// 2. 负载熔断预判：大文件或流媒体仅采集标头，不读响应体
+	isUnsafe, reason := isUnsafeResponseBody(ev)
 	originalReqInfo := pending.RequestInfo
-	_, originalResInfo := h.captureResponseData(client, ctx, ev)
+	var originalResInfo domain.ResponseInfo
+
+	if isUnsafe {
+		l.Info("检测到大文件或流媒体，触发负载熔断", "reason", reason)
+		originalResInfo = h.captureResponseHeadersOnly(ev)
+		originalResInfo.Body = fmt.Sprintf("[Body omitted: %s]", reason)
+	} else {
+		// 正常采集响应体
+		_, originalResInfo = h.captureResponseData(client, ctx, ev)
+	}
 
 	// 3. 计算并应用响应阶段的变更
 	evalCtx := h.buildEvalContext(ev)
@@ -202,7 +228,13 @@ func (h *Handler) HandleResponse(
 
 	var finalResult string
 	if mutation != nil && hasResponseMutation(mutation) {
-		if mutation.Body == nil && finalBody != "" {
+		// 负载熔断保护：如果触发了熔断，禁止修改 Body
+		if isUnsafe && mutation.Body != nil {
+			l.Warn("熔断状态下规则尝试修改响应体，操作被忽略", "reason", reason)
+			mutation.Body = nil
+		}
+
+		if mutation.Body == nil && finalBody != "" && !isUnsafe {
 			mutation.Body = &finalBody
 		}
 		h.executor.ApplyResponseMutation(ctx, client, ev, mutation)
@@ -218,6 +250,20 @@ func (h *Handler) HandleResponse(
 	// 4. 发送原子化全周期事件
 	allMatches := append(pending.MatchedRules, ruleMatches...)
 	h.emitResponseEvent(targetID, finalResult, allMatches, originalReqInfo, originalResInfo, mutation, finalBody, start, l)
+}
+
+// captureResponseHeadersOnly 仅捕获响应标头
+func (h *Handler) captureResponseHeadersOnly(ev *fetch.RequestPausedReply) domain.ResponseInfo {
+	responseInfo := domain.ResponseInfo{
+		Headers: make(map[string]string),
+	}
+	if ev.ResponseStatusCode != nil {
+		responseInfo.StatusCode = *ev.ResponseStatusCode
+	}
+	for _, h := range ev.ResponseHeaders {
+		responseInfo.Headers[h.Name] = h.Value
+	}
+	return responseInfo
 }
 
 // computeRequestMutation 计算请求阶段的所有变更
@@ -577,4 +623,59 @@ func hasRequestMutation(m *executor.RequestMutation) bool {
 // hasResponseMutation 检查响应变更是否有效
 func hasResponseMutation(m *executor.ResponseMutation) bool {
 	return m.StatusCode != nil || len(m.Headers) > 0 || len(m.RemoveHeaders) > 0 || m.Body != nil
+}
+
+// isLongConnectionType 识别天生就是长连接的请求类型（请求阶段）
+func isLongConnectionType(ev *fetch.RequestPausedReply) bool {
+	// 1. 基于 ResourceType 识别
+	rt := string(ev.ResourceType)
+	if rt == "WebSocket" || rt == "EventSource" {
+		return true
+	}
+
+	// 2. 基于标头识别
+	headers := make(map[string]string)
+	_ = json.Unmarshal(ev.Request.Headers, &headers)
+
+	for k, v := range headers {
+		lowerK := strings.ToLower(k)
+		lowerV := strings.ToLower(v)
+		if lowerK == "upgrade" && lowerV == "websocket" {
+			return true
+		}
+		if lowerK == "accept" && strings.Contains(lowerV, "text/event-stream") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isUnsafeResponseBody 识别不宜读取 Body 的响应（响应阶段）
+func isUnsafeResponseBody(ev *fetch.RequestPausedReply) (bool, string) {
+	// 1. 检查 Content-Length
+	for _, h := range ev.ResponseHeaders {
+		if strings.ToLower(h.Name) == "content-length" {
+			var size int64
+			fmt.Sscanf(h.Value, "%d", &size)
+			if size > MaxCaptureSize {
+				return true, fmt.Sprintf("size exceeds limit (%d bytes)", size)
+			}
+		}
+	}
+
+	// 2. 检查 Content-Type (流媒体/二进制大文件)
+	for _, h := range ev.ResponseHeaders {
+		if strings.ToLower(h.Name) == "content-type" {
+			ct := strings.ToLower(h.Value)
+			if strings.HasPrefix(ct, "video/") ||
+				strings.HasPrefix(ct, "audio/") ||
+				strings.HasPrefix(ct, "text/event-stream") ||
+				ct == "application/octet-stream" {
+				return true, "streaming or binary content-type: " + ct
+			}
+		}
+	}
+
+	return false, ""
 }

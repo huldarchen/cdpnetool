@@ -98,7 +98,7 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 
 		to := cfg.ProcessTimeoutMS
 		if to <= 0 {
-			to = 3000
+			to = 15000 // 放宽默认超时到 15s 以兼容慢接口
 		}
 		ctx, cancel := context.WithTimeout(handlerCtx, time.Duration(to)*time.Millisecond)
 		defer cancel()
