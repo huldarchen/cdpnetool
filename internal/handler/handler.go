@@ -14,6 +14,7 @@ import (
 	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
 
+	"github.com/google/uuid"
 	"github.com/mafredri/cdp"
 	"github.com/mafredri/cdp/protocol/fetch"
 )
@@ -62,14 +63,20 @@ func (h *Handler) Handle(
 	targetID domain.TargetID,
 	ev *fetch.RequestPausedReply,
 ) {
+	// 创建一个带超时的上下文
 	to := h.processTimeoutMS
 	if to <= 0 {
 		to = 3000
 	}
-
 	ctx2, cancel := context.WithTimeout(ctx, time.Duration(to)*time.Millisecond)
 	defer cancel()
-	start := time.Now()
+
+	traceID := uuid.New().String()
+	l := h.log.With(
+		"traceID", traceID,
+		"url", ev.Request.URL,
+		"requestID", string(ev.RequestID),
+	)
 
 	// 判断阶段
 	stage := rulespec.StageRequest
@@ -79,36 +86,34 @@ func (h *Handler) Handle(
 		statusCode = *ev.ResponseStatusCode
 	}
 
-	h.log.Debug("开始处理拦截事件", "stage", stage, "url", ev.Request.URL, "method", ev.Request.Method)
+	l.Debug("开始处理拦截事件", "stage", stage, "method", ev.Request.Method)
 
 	// 构建评估上下文（基于请求信息）
 	evalCtx := h.buildEvalContext(ev)
 
 	// 评估匹配规则
 	if h.engine == nil {
-		// 无引擎，发送未匹配事件并放行
 		h.sendUnmatchedEvent(targetID, ev, stage, statusCode)
 		h.executor.ContinueRequest(ctx2, client, ev)
 		return
 	}
 
+	start := time.Now()
 	matchedRules := h.engine.EvalForStage(evalCtx, stage)
 	if len(matchedRules) == 0 {
-		// 未匹配，发送未匹配事件并放行
 		h.sendUnmatchedEvent(targetID, ev, stage, statusCode)
 		if stage == rulespec.StageRequest {
 			h.executor.ContinueRequest(ctx2, client, ev)
 		} else {
 			h.executor.ContinueResponse(ctx2, client, ev)
 		}
-		h.log.Debug("拦截事件处理完成，无匹配规则", "stage", stage, "duration", time.Since(start))
+		l.Debug("拦截事件处理完成，无匹配规则", "stage", stage, "duration", time.Since(start))
 		return
 	}
 
 	// 有匹配规则 - 捕获原始数据
 	requestInfo, responseInfo := h.captureOriginalData(client, ctx2, ev, stage)
 
-	// 构造阶段上下文
 	stageCtx := StageContext{
 		MatchedRules: matchedRules,
 		RequestInfo:  requestInfo,
@@ -116,11 +121,11 @@ func (h *Handler) Handle(
 		Start:        start,
 	}
 
-	// 执行所有匹配规则的行为（aggregate 模式）
+	// 执行所有匹配规则的行为
 	if stage == rulespec.StageRequest {
-		h.executeRequestStageWithTracking(ctx2, client, targetID, ev, stageCtx)
+		h.executeRequestStageWithTracking(ctx2, client, targetID, ev, stageCtx, l)
 	} else {
-		h.executeResponseStageWithTracking(ctx2, client, targetID, ev, stageCtx)
+		h.executeResponseStageWithTracking(ctx2, client, targetID, ev, stageCtx, l)
 	}
 }
 
@@ -131,6 +136,7 @@ func (h *Handler) executeRequestStageWithTracking(
 	targetID domain.TargetID,
 	ev *fetch.RequestPausedReply,
 	stageCtx StageContext,
+	l logger.Logger,
 ) {
 	var aggregatedMut *executor.RequestMutation
 	ruleMatches := buildRuleMatches(stageCtx.MatchedRules)
@@ -152,7 +158,7 @@ func (h *Handler) executeRequestStageWithTracking(
 			h.executor.ApplyRequestMutation(ctx, client, ev, mut)
 			// 发送 blocked 事件
 			h.sendMatchedEvent(targetID, "blocked", ruleMatches, stageCtx.RequestInfo, stageCtx.ResponseInfo)
-			h.log.Info("请求被阻止", "rule", rule.ID, "url", ev.Request.URL)
+			l.Info("请求被阻止", "rule", rule.ID)
 			return
 		}
 
@@ -183,7 +189,7 @@ func (h *Handler) executeRequestStageWithTracking(
 
 	// 发送匹配事件
 	h.sendMatchedEvent(targetID, finalResult, ruleMatches, modifiedRequestInfo, modifiedResponseInfo)
-	h.log.Debug("请求阶段处理完成", "result", finalResult, "duration", time.Since(stageCtx.Start))
+	l.Debug("请求阶段处理完成", "result", finalResult, "duration", time.Since(stageCtx.Start))
 }
 
 // executeResponseStageWithTracking 执行响应阶段的行为并跟踪变更
@@ -193,6 +199,7 @@ func (h *Handler) executeResponseStageWithTracking(
 	targetID domain.TargetID,
 	ev *fetch.RequestPausedReply,
 	stageCtx StageContext,
+	l logger.Logger,
 ) {
 	responseBody := stageCtx.ResponseInfo.Body
 	var aggregatedMut *executor.ResponseMutation
@@ -242,7 +249,7 @@ func (h *Handler) executeResponseStageWithTracking(
 		// 发送匹配事件
 		h.sendMatchedEvent(targetID, finalResult, ruleMatches, stageCtx.RequestInfo, stageCtx.ResponseInfo)
 	}
-	h.log.Debug("响应阶段处理完成", "result", finalResult, "duration", time.Since(stageCtx.Start))
+	l.Debug("响应阶段处理完成", "result", finalResult, "duration", time.Since(stageCtx.Start))
 }
 
 // SetEngine 设置规则引擎
