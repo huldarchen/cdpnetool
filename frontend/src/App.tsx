@@ -31,7 +31,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 
-import type { ApiResponse, SessionData, TargetListData, BrowserData, EmptyData, TargetInfo } from '@/types/api'
+import type { ApiResponse, SessionData, TargetListData, BrowserData, EmptyData } from '@/types/api'
 
 // 配置记录类型
 interface ConfigRecord {
