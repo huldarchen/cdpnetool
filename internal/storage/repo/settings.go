@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"time"
 
 	"cdpnetool/internal/storage/model"
@@ -21,9 +22,9 @@ func NewSettingsRepo(db *gorm.DB) *SettingsRepo {
 }
 
 // Get 获取设置值
-func (r *SettingsRepo) Get(key string) (string, error) {
+func (r *SettingsRepo) Get(ctx context.Context, key string) (string, error) {
 	var setting model.Setting
-	result := r.Db.Where("key = ?", key).First(&setting)
+	result := r.Db.WithContext(ctx).Where("key = ?", key).First(&setting)
 	if result.Error != nil {
 		return "", result.Error
 	}
@@ -31,8 +32,8 @@ func (r *SettingsRepo) Get(key string) (string, error) {
 }
 
 // GetWithDefault 获取设置值，不存在时返回默认值
-func (r *SettingsRepo) GetWithDefault(key, defaultValue string) string {
-	val, err := r.Get(key)
+func (r *SettingsRepo) GetWithDefault(ctx context.Context, key, defaultValue string) string {
+	val, err := r.Get(ctx, key)
 	if err != nil {
 		return defaultValue
 	}
@@ -40,24 +41,24 @@ func (r *SettingsRepo) GetWithDefault(key, defaultValue string) string {
 }
 
 // Set 设置值（存在则更新，不存在则创建）
-func (r *SettingsRepo) Set(key, value string) error {
+func (r *SettingsRepo) Set(ctx context.Context, key, value string) error {
 	setting := model.Setting{
 		Key:       key,
 		Value:     value,
 		UpdatedAt: time.Now(),
 	}
-	return r.Db.Save(&setting).Error
+	return r.Db.WithContext(ctx).Save(&setting).Error
 }
 
 // DeleteByKey 根据 key 删除设置
-func (r *SettingsRepo) DeleteByKey(key string) error {
-	return r.Db.Delete(&model.Setting{}, "key = ?", key).Error
+func (r *SettingsRepo) DeleteByKey(ctx context.Context, key string) error {
+	return r.Db.WithContext(ctx).Delete(&model.Setting{}, "key = ?", key).Error
 }
 
 // GetAll 获取所有设置
-func (r *SettingsRepo) GetAll() (map[string]string, error) {
+func (r *SettingsRepo) GetAll(ctx context.Context) (map[string]string, error) {
 	var settings []model.Setting
-	if err := r.Db.Find(&settings).Error; err != nil {
+	if err := r.Db.WithContext(ctx).Find(&settings).Error; err != nil {
 		return nil, err
 	}
 
@@ -69,8 +70,8 @@ func (r *SettingsRepo) GetAll() (map[string]string, error) {
 }
 
 // SetMultiple 批量设置
-func (r *SettingsRepo) SetMultiple(kvs map[string]string) error {
-	return r.Db.Transaction(func(tx *gorm.DB) error {
+func (r *SettingsRepo) SetMultiple(ctx context.Context, kvs map[string]string) error {
+	return r.Db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
 		for key, value := range kvs {
 			setting := model.Setting{
@@ -87,31 +88,31 @@ func (r *SettingsRepo) SetMultiple(kvs map[string]string) error {
 }
 
 // GetDevToolsURL 获取 DevTools URL
-func (r *SettingsRepo) GetDevToolsURL() string {
-	return r.GetWithDefault(model.SettingKeyDevToolsURL, "http://localhost:9222")
+func (r *SettingsRepo) GetDevToolsURL(ctx context.Context) string {
+	return r.GetWithDefault(ctx, model.SettingKeyDevToolsURL, "http://localhost:9222")
 }
 
 // SetDevToolsURL 设置 DevTools URL
-func (r *SettingsRepo) SetDevToolsURL(url string) error {
-	return r.Set(model.SettingKeyDevToolsURL, url)
+func (r *SettingsRepo) SetDevToolsURL(ctx context.Context, url string) error {
+	return r.Set(ctx, model.SettingKeyDevToolsURL, url)
 }
 
 // GetTheme 获取主题
-func (r *SettingsRepo) GetTheme() string {
-	return r.GetWithDefault(model.SettingKeyTheme, "system")
+func (r *SettingsRepo) GetTheme(ctx context.Context) string {
+	return r.GetWithDefault(ctx, model.SettingKeyTheme, "system")
 }
 
 // SetTheme 设置主题
-func (r *SettingsRepo) SetTheme(theme string) error {
-	return r.Set(model.SettingKeyTheme, theme)
+func (r *SettingsRepo) SetTheme(ctx context.Context, theme string) error {
+	return r.Set(ctx, model.SettingKeyTheme, theme)
 }
 
 // GetLastConfigID 获取上次使用的配置 ID
-func (r *SettingsRepo) GetLastConfigID() string {
-	return r.GetWithDefault(model.SettingKeyLastConfigID, "")
+func (r *SettingsRepo) GetLastConfigID(ctx context.Context) string {
+	return r.GetWithDefault(ctx, model.SettingKeyLastConfigID, "")
 }
 
 // SetLastConfigID 设置上次使用的配置 ID
-func (r *SettingsRepo) SetLastConfigID(id string) error {
-	return r.Set(model.SettingKeyLastConfigID, id)
+func (r *SettingsRepo) SetLastConfigID(ctx context.Context, id string) error {
+	return r.Set(ctx, model.SettingKeyLastConfigID, id)
 }

@@ -21,7 +21,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// App 是暴露给前端的 Wails 方法集合，负责管理会话、浏览器、配置和事件。
+// App 负责管理会话、浏览器、配置和事件，供前端调用。
 type App struct {
 	ctx             context.Context
 	cfg             *config.Config
@@ -51,12 +51,11 @@ func NewApp() *App {
 	}
 }
 
-// Startup 在应用启动时由 Wails 框架调用，完成数据库和事件仓库的初始化。
+// Startup 初始化数据库和仓库。
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	a.log.Info("应用启动")
 
-	// 1. 初始化数据库基础设施
 	gormLogger := db.NewLogger(a.log)
 	gdb, err := db.New(db.Options{
 		Name:   a.cfg.Sqlite.Db,
@@ -68,7 +67,6 @@ func (a *App) Startup(ctx context.Context) {
 		return
 	}
 
-	// 2. 执行自动迁移
 	err = db.Migrate(gdb,
 		&model.Setting{},
 		&model.ConfigRecord{},
@@ -80,33 +78,26 @@ func (a *App) Startup(ctx context.Context) {
 	}
 
 	a.gdb = gdb
-
-	// 3. 注入数据库实例到仓库
 	a.settingsRepo = repo.NewSettingsRepo(gdb)
 	a.configRepo = repo.NewConfigRepo(gdb)
 	a.eventRepo = repo.NewEventRepo(gdb, a.log)
 	a.log.Debug("数据持久化层初始化完成")
 }
 
-// Shutdown 在应用关闭时由 Wails 框架调用，负责清理资源。
+// Shutdown 负责清理资源。
 func (a *App) Shutdown(ctx context.Context) {
 	a.log.Info("应用关闭中...")
 
-	// 取消事件订阅
 	if a.cancelSubscribe != nil {
 		a.cancelSubscribe()
 	}
 
 	if a.currentSession != "" {
-		if err := a.service.StopSession(a.currentSession); err != nil {
-			a.log.Err(err, "停止会话失败", "sessionID", a.currentSession)
-		}
+		_ = a.service.StopSession(ctx, a.currentSession)
 	}
 
 	if a.browser != nil {
-		if err := a.browser.Stop(2 * time.Second); err != nil {
-			a.log.Err(err, "关闭浏览器失败")
-		}
+		_ = a.browser.Stop(2 * time.Second)
 	}
 
 	if a.eventRepo != nil {
@@ -114,11 +105,8 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 
 	if a.gdb != nil {
-		sqlDB, err := a.gdb.DB()
-		if err == nil {
-			if err := sqlDB.Close(); err != nil {
-				a.log.Err(err, "关闭数据库连接失败")
-			}
+		if sqlDB, err := a.gdb.DB(); err == nil {
+			_ = sqlDB.Close()
 		}
 	}
 
@@ -136,7 +124,7 @@ func (a *App) StartSession(devToolsURL string) api.Response[SessionData] {
 	}
 
 	cfg := domain.SessionConfig{DevToolsURL: devToolsURL}
-	sid, err := a.service.StartSession(cfg)
+	sid, err := a.service.StartSession(a.ctx, cfg)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[SessionData](code, msg)
@@ -145,7 +133,7 @@ func (a *App) StartSession(devToolsURL string) api.Response[SessionData] {
 	a.currentSession = sid
 
 	// 启动事件订阅
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.ctx)
 	a.cancelSubscribe = cancel
 	go a.subscribeEvents(ctx, sid)
 
@@ -163,7 +151,7 @@ func (a *App) StopSession(sessionID string) api.Response[api.EmptyData] {
 		a.cancelSubscribe = nil
 	}
 
-	err := a.service.StopSession(domain.SessionID(sessionID))
+	err := a.service.StopSession(a.ctx, domain.SessionID(sessionID))
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
@@ -183,7 +171,7 @@ func (a *App) GetCurrentSession() api.Response[SessionData] {
 
 // ListTargets 列出指定会话中的浏览器页面目标。
 func (a *App) ListTargets(sessionID string) api.Response[TargetListData] {
-	targets, err := a.service.ListTargets(domain.SessionID(sessionID))
+	targets, err := a.service.ListTargets(a.ctx, domain.SessionID(sessionID))
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[TargetListData](code, msg)
@@ -194,7 +182,7 @@ func (a *App) ListTargets(sessionID string) api.Response[TargetListData] {
 
 // AttachTarget 附加指定页面目标到会话进行拦截。
 func (a *App) AttachTarget(sessionID, targetID string) api.Response[api.EmptyData] {
-	err := a.service.AttachTarget(domain.SessionID(sessionID), domain.TargetID(targetID))
+	err := a.service.AttachTarget(a.ctx, domain.SessionID(sessionID), domain.TargetID(targetID))
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
@@ -206,7 +194,7 @@ func (a *App) AttachTarget(sessionID, targetID string) api.Response[api.EmptyDat
 
 // DetachTarget 从会话中移除指定页面目标。
 func (a *App) DetachTarget(sessionID, targetID string) api.Response[api.EmptyData] {
-	err := a.service.DetachTarget(domain.SessionID(sessionID), domain.TargetID(targetID))
+	err := a.service.DetachTarget(a.ctx, domain.SessionID(sessionID), domain.TargetID(targetID))
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
@@ -274,7 +262,7 @@ func (a *App) ExportConfig(name, rulesJSON string) api.Response[api.EmptyData] {
 
 // EnableInterception 启用指定会话的网络拦截功能。
 func (a *App) EnableInterception(sessionID string) api.Response[api.EmptyData] {
-	err := a.service.EnableInterception(domain.SessionID(sessionID))
+	err := a.service.EnableInterception(a.ctx, domain.SessionID(sessionID))
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
@@ -286,7 +274,7 @@ func (a *App) EnableInterception(sessionID string) api.Response[api.EmptyData] {
 
 // DisableInterception 停用指定会话的网络拦截功能。
 func (a *App) DisableInterception(sessionID string) api.Response[api.EmptyData] {
-	err := a.service.DisableInterception(domain.SessionID(sessionID))
+	err := a.service.DisableInterception(a.ctx, domain.SessionID(sessionID))
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
@@ -304,7 +292,7 @@ func (a *App) LoadRules(sessionID string, rulesJSON string) api.Response[api.Emp
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
-	err := a.service.LoadRules(domain.SessionID(sessionID), &cfg)
+	err := a.service.LoadRules(a.ctx, domain.SessionID(sessionID), &cfg)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
@@ -316,7 +304,7 @@ func (a *App) LoadRules(sessionID string, rulesJSON string) api.Response[api.Emp
 
 // GetRuleStats 获取指定会话的规则命中统计信息。
 func (a *App) GetRuleStats(sessionID string) api.Response[StatsData] {
-	stats, err := a.service.GetRuleStats(domain.SessionID(sessionID))
+	stats, err := a.service.GetRuleStats(a.ctx, domain.SessionID(sessionID))
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[StatsData](code, msg)
@@ -327,7 +315,7 @@ func (a *App) GetRuleStats(sessionID string) api.Response[StatsData] {
 
 // subscribeEvents 订阅拦截事件并通过 Wails 事件系统推送到前端。
 func (a *App) subscribeEvents(ctx context.Context, sessionID domain.SessionID) {
-	ch, err := a.service.SubscribeEvents(sessionID)
+	ch, err := a.service.SubscribeEvents(ctx, sessionID)
 	if err != nil {
 		a.log.Err(err, "订阅事件失败", "sessionID", sessionID)
 		return
@@ -375,7 +363,7 @@ func (a *App) LaunchBrowser(headless bool) api.Response[BrowserData] {
 		Headless: headless,
 	}
 
-	b, err := browser.Start(opts)
+	b, err := browser.Start(a.ctx, opts)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[BrowserData](code, msg)
@@ -415,7 +403,7 @@ func (a *App) GetBrowserStatus() api.Response[BrowserData] {
 
 // GetAllSettings 获取所有应用设置。
 func (a *App) GetAllSettings() api.Response[SettingsData] {
-	settings, err := a.settingsRepo.GetAll()
+	settings, err := a.settingsRepo.GetAll(a.ctx)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[SettingsData](code, msg)
@@ -426,13 +414,13 @@ func (a *App) GetAllSettings() api.Response[SettingsData] {
 
 // GetSetting 获取单个设置项的值。
 func (a *App) GetSetting(key string) api.Response[SettingData] {
-	value := a.settingsRepo.GetWithDefault(key, "")
+	value := a.settingsRepo.GetWithDefault(a.ctx, key, "")
 	return api.OK(SettingData{Value: value})
 }
 
 // SetSetting 设置单个配置项的值。
 func (a *App) SetSetting(key, value string) api.Response[api.EmptyData] {
-	if err := a.settingsRepo.Set(key, value); err != nil {
+	if err := a.settingsRepo.Set(a.ctx, key, value); err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
@@ -448,7 +436,7 @@ func (a *App) SetMultipleSettings(settingsJSON string) api.Response[api.EmptyDat
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
-	if err := a.settingsRepo.SetMultiple(settings); err != nil {
+	if err := a.settingsRepo.SetMultiple(a.ctx, settings); err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
@@ -458,7 +446,7 @@ func (a *App) SetMultipleSettings(settingsJSON string) api.Response[api.EmptyDat
 
 // ListConfigs 列出所有已保存的配置。
 func (a *App) ListConfigs() api.Response[ConfigListData] {
-	configs, err := a.configRepo.List()
+	configs, err := a.configRepo.List(a.ctx)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[ConfigListData](code, msg)
@@ -469,7 +457,7 @@ func (a *App) ListConfigs() api.Response[ConfigListData] {
 
 // GetConfig 根据 ID 获取指定配置。
 func (a *App) GetConfig(id uint) api.Response[ConfigData] {
-	config, err := a.configRepo.FindOne(context.Background(), id)
+	config, err := a.configRepo.FindOne(a.ctx, id)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[ConfigData](code, msg)
@@ -482,7 +470,7 @@ func (a *App) GetConfig(id uint) api.Response[ConfigData] {
 func (a *App) CreateNewConfig(name string) api.Response[NewConfigData] {
 	cfg := rulespec.NewConfig(name)
 
-	config, err := a.configRepo.Create(cfg)
+	config, err := a.configRepo.Create(a.ctx, cfg)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[NewConfigData](code, msg)
@@ -518,7 +506,7 @@ func (a *App) SaveConfig(dbID uint, configJSON string) api.Response[ConfigData] 
 		return api.Fail[ConfigData](code, msg)
 	}
 
-	config, err := a.configRepo.Save(dbID, &cfg)
+	config, err := a.configRepo.Save(a.ctx, dbID, &cfg)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[ConfigData](code, msg)
@@ -530,7 +518,7 @@ func (a *App) SaveConfig(dbID uint, configJSON string) api.Response[ConfigData] 
 
 // DeleteConfig 删除指定 ID 的配置。
 func (a *App) DeleteConfig(id uint) api.Response[api.EmptyData] {
-	if err := a.configRepo.Delete(context.Background(), id); err != nil {
+	if err := a.configRepo.Delete(a.ctx, id); err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
@@ -541,12 +529,12 @@ func (a *App) DeleteConfig(id uint) api.Response[api.EmptyData] {
 
 // SetActiveConfig 设置指定配置为当前激活状态。
 func (a *App) SetActiveConfig(id uint) api.Response[api.EmptyData] {
-	if err := a.configRepo.SetActive(id); err != nil {
+	if err := a.configRepo.SetActive(a.ctx, id); err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
-	if err := a.settingsRepo.SetLastConfigID(fmt.Sprintf("%d", id)); err != nil {
+	if err := a.settingsRepo.SetLastConfigID(a.ctx, fmt.Sprintf("%d", id)); err != nil {
 		a.log.Warn("保存上次配置 ID 失败", "id", id, "error", err)
 	}
 
@@ -556,7 +544,7 @@ func (a *App) SetActiveConfig(id uint) api.Response[api.EmptyData] {
 
 // GetActiveConfig 获取当前激活的配置。
 func (a *App) GetActiveConfig() api.Response[ConfigData] {
-	config, err := a.configRepo.GetActive()
+	config, err := a.configRepo.GetActive(a.ctx)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[ConfigData](code, msg)
@@ -567,7 +555,7 @@ func (a *App) GetActiveConfig() api.Response[ConfigData] {
 
 // RenameConfig 重命名指定的配置。
 func (a *App) RenameConfig(id uint, newName string) api.Response[api.EmptyData] {
-	if err := a.configRepo.Rename(id, newName); err != nil {
+	if err := a.configRepo.Rename(a.ctx, id, newName); err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
@@ -584,7 +572,7 @@ func (a *App) ImportConfig(configJSON string) api.Response[ConfigData] {
 		return api.Fail[ConfigData](code, msg)
 	}
 
-	config, err := a.configRepo.Upsert(&cfg)
+	config, err := a.configRepo.Upsert(a.ctx, &cfg)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[ConfigData](code, msg)
@@ -601,7 +589,7 @@ func (a *App) LoadActiveConfigToSession() api.Response[api.EmptyData] {
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
-	config, err := a.configRepo.GetActive()
+	config, err := a.configRepo.GetActive(a.ctx)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
@@ -617,7 +605,7 @@ func (a *App) LoadActiveConfigToSession() api.Response[api.EmptyData] {
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
-	if err := a.service.LoadRules(a.currentSession, cfg); err != nil {
+	if err := a.service.LoadRules(a.ctx, a.currentSession, cfg); err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)
 	}
@@ -633,7 +621,7 @@ func (a *App) QueryMatchedEventHistory(sessionID, finalResult, url, method strin
 		return api.Fail[EventHistoryData](code, msg)
 	}
 
-	events, total, err := a.eventRepo.Query(repo.QueryOptions{
+	events, total, err := a.eventRepo.Query(a.ctx, repo.QueryOptions{
 		SessionID:   sessionID,
 		FinalResult: finalResult,
 		URL:         url,
@@ -658,7 +646,7 @@ func (a *App) CleanupEventHistory(retentionDays int) api.Response[api.EmptyData]
 		return api.Fail[api.EmptyData](code, msg)
 	}
 
-	deleted, err := a.eventRepo.CleanupOldEvents(retentionDays)
+	deleted, err := a.eventRepo.CleanupOldEvents(a.ctx, retentionDays)
 	if err != nil {
 		code, msg := a.TranslateError(err)
 		return api.Fail[api.EmptyData](code, msg)

@@ -31,7 +31,7 @@ type Browser struct {
 }
 
 // Start 启动浏览器并等待CDP服务就绪
-func Start(opts Options) (*Browser, error) {
+func Start(ctx context.Context, opts Options) (*Browser, error) {
 	exe := opts.ExecPath
 	if exe == "" {
 		exe = defaultChromePath()
@@ -52,7 +52,7 @@ func Start(opts Options) (*Browser, error) {
 
 	port = finalPort
 	args := buildLaunchArgs(port, opts)
-	cmd := exec.Command(exe, args...)
+	cmd := exec.CommandContext(ctx, exe, args...)
 	if len(opts.Env) > 0 {
 		cmd.Env = append(os.Environ(), opts.Env...)
 	}
@@ -65,10 +65,10 @@ func Start(opts Options) (*Browser, error) {
 	}
 
 	b := &Browser{cmd: cmd, DevToolsURL: fmt.Sprintf("http://127.0.0.1:%d", port), port: port}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	waitCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if err := waitDevToolsReady(ctx, b.DevToolsURL); err != nil {
+	if err := waitDevToolsReady(waitCtx, b.DevToolsURL); err != nil {
 		_ = b.Stop(2 * time.Second)
 		return nil, fmt.Errorf("devtools not ready: %w", err)
 	}

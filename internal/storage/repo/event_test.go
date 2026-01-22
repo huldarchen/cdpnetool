@@ -1,6 +1,7 @@
 package repo_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -64,7 +65,7 @@ func TestEventRepo_AsyncWrite(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// 验证数据是否写入数据库
-	events, total, err := r.Query(repo.QueryOptions{
+	events, total, err := r.Query(context.Background(), repo.QueryOptions{
 		SessionID: "test-session",
 		Limit:     100,
 	})
@@ -121,7 +122,7 @@ func TestEventRepo_QueryWithFilters(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// 按 SessionID 过滤
-	_, total, _ := r.Query(repo.QueryOptions{
+	_, total, _ := r.Query(context.Background(), repo.QueryOptions{
 		SessionID: "s1",
 		Limit:     100,
 	})
@@ -130,7 +131,7 @@ func TestEventRepo_QueryWithFilters(t *testing.T) {
 	}
 
 	// 按 FinalResult 过滤
-	results, total, _ := r.Query(repo.QueryOptions{
+	results, total, _ := r.Query(context.Background(), repo.QueryOptions{
 		FinalResult: "blocked",
 		Limit:       100,
 	})
@@ -142,7 +143,7 @@ func TestEventRepo_QueryWithFilters(t *testing.T) {
 	}
 
 	// 按 Method 过滤
-	_, total, _ = r.Query(repo.QueryOptions{
+	_, total, _ = r.Query(context.Background(), repo.QueryOptions{
 		Method: "POST",
 		Limit:  100,
 	})

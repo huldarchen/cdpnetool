@@ -1,6 +1,7 @@
 package repo_test
 
 import (
+	"context"
 	"testing"
 
 	"cdpnetool/internal/storage/db"
@@ -33,12 +34,12 @@ func TestSettingsRepo_SetAndGet(t *testing.T) {
 	key := "test_key"
 	value := "test_value"
 
-	err := r.Set(key, value)
+	err := r.Set(context.Background(), key, value)
 	if err != nil {
 		t.Fatalf("设置失败: %v", err)
 	}
 
-	retrieved, err := r.Get(key)
+	retrieved, err := r.Get(context.Background(), key)
 	if err != nil {
 		t.Fatalf("获取设置失败: %v", err)
 	}
@@ -53,7 +54,7 @@ func TestSettingsRepo_GetWithDefault(t *testing.T) {
 	r := setupSettingsTestDB(t)
 
 	defaultVal := "default_value"
-	retrieved := r.GetWithDefault("non_existent_key", defaultVal)
+	retrieved := r.GetWithDefault(context.Background(), "non_existent_key", defaultVal)
 
 	if retrieved != defaultVal {
 		t.Errorf("预期返回默认值 %s，实际返回 %s", defaultVal, retrieved)
@@ -70,14 +71,14 @@ func TestSettingsRepo_SetMultiple(t *testing.T) {
 		"k3": "v3",
 	}
 
-	err := r.SetMultiple(kvs)
+	err := r.SetMultiple(context.Background(), kvs)
 	if err != nil {
 		t.Fatalf("批量设置失败: %v", err)
 	}
 
 	// 验证所有键值对是否正确保存
 	for key, expectedVal := range kvs {
-		actualVal, err := r.Get(key)
+		actualVal, err := r.Get(context.Background(), key)
 		if err != nil {
 			t.Errorf("获取键 %s 失败: %v", key, err)
 		}
@@ -92,14 +93,14 @@ func TestSettingsRepo_DeleteByKey(t *testing.T) {
 	r := setupSettingsTestDB(t)
 
 	key := "to_delete"
-	r.Set(key, "some_value")
+	r.Set(context.Background(), key, "some_value")
 
-	err := r.DeleteByKey(key)
+	err := r.DeleteByKey(context.Background(), key)
 	if err != nil {
 		t.Fatalf("删除失败: %v", err)
 	}
 
-	_, err = r.Get(key)
+	_, err = r.Get(context.Background(), key)
 	if err == nil {
 		t.Error("预期键已删除，但仍然能获取到值")
 	}
@@ -111,24 +112,24 @@ func TestSettingsRepo_PresetKeys(t *testing.T) {
 
 	// 测试 DevToolsURL
 	expectedURL := "http://localhost:9999"
-	r.SetDevToolsURL(expectedURL)
-	actualURL := r.GetDevToolsURL()
+	r.SetDevToolsURL(context.Background(), expectedURL)
+	actualURL := r.GetDevToolsURL(context.Background())
 	if actualURL != expectedURL {
 		t.Errorf("DevToolsURL 预期 %s，实际 %s", expectedURL, actualURL)
 	}
 
 	// 测试 Theme
 	expectedTheme := "dark"
-	r.SetTheme(expectedTheme)
-	actualTheme := r.GetTheme()
+	r.SetTheme(context.Background(), expectedTheme)
+	actualTheme := r.GetTheme(context.Background())
 	if actualTheme != expectedTheme {
 		t.Errorf("Theme 预期 %s，实际 %s", expectedTheme, actualTheme)
 	}
 
 	// 测试默认值
-	defaultURL := r.GetDevToolsURL()
-	r.DeleteByKey(model.SettingKeyDevToolsURL)
-	resetURL := r.GetDevToolsURL()
+	defaultURL := r.GetDevToolsURL(context.Background())
+	r.DeleteByKey(context.Background(), model.SettingKeyDevToolsURL)
+	resetURL := r.GetDevToolsURL(context.Background())
 	if resetURL == defaultURL {
 		// 应该返回默认值 "http://localhost:9222"
 		if resetURL != "http://localhost:9222" {

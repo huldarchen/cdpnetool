@@ -45,7 +45,7 @@ func New(devtoolsURL string, log logger.Logger) *Manager {
 }
 
 // AttachTarget 附加到指定浏览器目标并建立 CDP 会话
-func (m *Manager) AttachTarget(target domain.TargetID) (*Session, error) {
+func (m *Manager) AttachTarget(ctx context.Context, target domain.TargetID) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -60,21 +60,22 @@ func (m *Manager) AttachTarget(target domain.TargetID) (*Session, error) {
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	selected, err := m.selectTarget(ctx, target)
+	// 派生 Session 级 Context，用于该目标的整个生命周期
+	sessionCtx, sessionCancel := context.WithCancel(ctx)
+	selected, err := m.selectTarget(sessionCtx, target)
 	if err != nil {
-		cancel()
+		sessionCancel()
 		return nil, err
 	}
 	if selected == nil {
-		cancel()
+		sessionCancel()
 		m.log.Error("未找到可附加的浏览器目标")
 		return nil, fmt.Errorf("no target")
 	}
 
-	conn, err := rpcc.DialContext(ctx, selected.WebSocketDebuggerURL)
+	conn, err := rpcc.DialContext(sessionCtx, selected.WebSocketDebuggerURL)
 	if err != nil {
-		cancel()
+		sessionCancel()
 		m.log.Err(err, "连接浏览器 DevTools 失败")
 		return nil, err
 	}
@@ -84,8 +85,8 @@ func (m *Manager) AttachTarget(target domain.TargetID) (*Session, error) {
 		ID:     domain.TargetID(selected.ID),
 		Conn:   conn,
 		Client: client,
-		Ctx:    ctx,
-		Cancel: cancel,
+		Ctx:    sessionCtx,
+		Cancel: sessionCancel,
 	}
 
 	m.targets[session.ID] = session

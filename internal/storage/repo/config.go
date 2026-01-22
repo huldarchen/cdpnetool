@@ -26,7 +26,7 @@ func NewConfigRepo(db *gorm.DB) *ConfigRepo {
 }
 
 // Create 创建新配置
-func (r *ConfigRepo) Create(cfg *rulespec.Config) (*model.ConfigRecord, error) {
+func (r *ConfigRepo) Create(ctx context.Context, cfg *rulespec.Config) (*model.ConfigRecord, error) {
 	// 校验配置 ID
 	if err := rulespec.ValidateConfigID(cfg.ID); err != nil {
 		return nil, err
@@ -52,14 +52,14 @@ func (r *ConfigRepo) Create(cfg *rulespec.Config) (*model.ConfigRecord, error) {
 		UpdatedAt:  time.Now(),
 	}
 
-	if err := r.Db.Create(record).Error; err != nil {
+	if err := r.Db.WithContext(ctx).Create(record).Error; err != nil {
 		return nil, err
 	}
 	return record, nil
 }
 
 // Update 更新配置（按数据库 ID）
-func (r *ConfigRepo) Update(dbID uint, cfg *rulespec.Config) error {
+func (r *ConfigRepo) Update(ctx context.Context, dbID uint, cfg *rulespec.Config) error {
 	// 校验配置 ID
 	if err := rulespec.ValidateConfigID(cfg.ID); err != nil {
 		return err
@@ -75,7 +75,7 @@ func (r *ConfigRepo) Update(dbID uint, cfg *rulespec.Config) error {
 		return fmt.Errorf("序列化配置失败: %w", err)
 	}
 
-	return r.Db.Model(&model.ConfigRecord{}).Where("id = ?", dbID).Updates(map[string]any{
+	return r.Db.WithContext(ctx).Model(&model.ConfigRecord{}).Where("id = ?", dbID).Updates(map[string]any{
 		"config_id":   cfg.ID,
 		"name":        cfg.Name,
 		"version":     cfg.Version,
@@ -85,9 +85,9 @@ func (r *ConfigRepo) Update(dbID uint, cfg *rulespec.Config) error {
 }
 
 // GetByConfigID 根据配置业务 ID 获取配置
-func (r *ConfigRepo) GetByConfigID(configID string) (*model.ConfigRecord, error) {
+func (r *ConfigRepo) GetByConfigID(ctx context.Context, configID string) (*model.ConfigRecord, error) {
 	var record model.ConfigRecord
-	if err := r.Db.Where("config_id = ?", configID).First(&record).Error; err != nil {
+	if err := r.Db.WithContext(ctx).Where("config_id = ?", configID).First(&record).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -97,17 +97,17 @@ func (r *ConfigRepo) GetByConfigID(configID string) (*model.ConfigRecord, error)
 }
 
 // List 列出所有配置
-func (r *ConfigRepo) List() ([]model.ConfigRecord, error) {
+func (r *ConfigRepo) List(ctx context.Context) ([]model.ConfigRecord, error) {
 	var records []model.ConfigRecord
-	if err := r.Db.Order("updated_at DESC").Find(&records).Error; err != nil {
+	if err := r.Db.WithContext(ctx).Order("updated_at DESC").Find(&records).Error; err != nil {
 		return nil, err
 	}
 	return records, nil
 }
 
 // SetActive 设置激活的配置（只能有一个激活）
-func (r *ConfigRepo) SetActive(id uint) error {
-	return r.Db.Transaction(func(tx *gorm.DB) error {
+func (r *ConfigRepo) SetActive(ctx context.Context, id uint) error {
+	return r.Db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 先取消所有激活
 		if err := tx.Model(&model.ConfigRecord{}).Where("is_active = ?", true).Update("is_active", false).Error; err != nil {
 			return err
@@ -121,9 +121,9 @@ func (r *ConfigRepo) SetActive(id uint) error {
 }
 
 // GetActive 获取当前激活的配置
-func (r *ConfigRepo) GetActive() (*model.ConfigRecord, error) {
+func (r *ConfigRepo) GetActive(ctx context.Context) (*model.ConfigRecord, error) {
 	var record model.ConfigRecord
-	if err := r.Db.Where("is_active = ?", true).First(&record).Error; err != nil {
+	if err := r.Db.WithContext(ctx).Where("is_active = ?", true).First(&record).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -146,18 +146,18 @@ func (r *ConfigRepo) ToRulespecConfig(record *model.ConfigRecord) (*rulespec.Con
 }
 
 // Save 保存配置（根据数据库 ID 判断新增或更新）
-func (r *ConfigRepo) Save(dbID uint, cfg *rulespec.Config) (*model.ConfigRecord, error) {
+func (r *ConfigRepo) Save(ctx context.Context, dbID uint, cfg *rulespec.Config) (*model.ConfigRecord, error) {
 	if dbID == 0 {
-		return r.Create(cfg)
+		return r.Create(ctx, cfg)
 	}
-	if err := r.Update(dbID, cfg); err != nil {
+	if err := r.Update(ctx, dbID, cfg); err != nil {
 		return nil, err
 	}
-	return r.FindOne(context.Background(), dbID)
+	return r.FindOne(ctx, dbID)
 }
 
 // Upsert 导入配置（根据配置业务 ID 判断覆盖或新增）
-func (r *ConfigRepo) Upsert(cfg *rulespec.Config) (*model.ConfigRecord, error) {
+func (r *ConfigRepo) Upsert(ctx context.Context, cfg *rulespec.Config) (*model.ConfigRecord, error) {
 	if err := rulespec.ValidateConfigID(cfg.ID); err != nil {
 		return nil, err
 	}
@@ -166,24 +166,24 @@ func (r *ConfigRepo) Upsert(cfg *rulespec.Config) (*model.ConfigRecord, error) {
 		return nil, err
 	}
 
-	existing, err := r.GetByConfigID(cfg.ID)
+	existing, err := r.GetByConfigID(ctx, cfg.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	if existing != nil {
-		if err := r.Update(existing.ID, cfg); err != nil {
+		if err := r.Update(ctx, existing.ID, cfg); err != nil {
 			return nil, err
 		}
-		return r.FindOne(context.Background(), existing.ID)
+		return r.FindOne(ctx, existing.ID)
 	}
 
-	return r.Create(cfg)
+	return r.Create(ctx, cfg)
 }
 
 // Rename 重命名配置
-func (r *ConfigRepo) Rename(id uint, newName string) error {
-	record, err := r.FindOne(context.Background(), id)
+func (r *ConfigRepo) Rename(ctx context.Context, id uint, newName string) error {
+	record, err := r.FindOne(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func (r *ConfigRepo) Rename(id uint, newName string) error {
 		return fmt.Errorf("序列化配置失败: %w", err)
 	}
 
-	return r.Db.Model(&model.ConfigRecord{}).Where("id = ?", id).Updates(map[string]any{
+	return r.Db.WithContext(ctx).Model(&model.ConfigRecord{}).Where("id = ?", id).Updates(map[string]any{
 		"name":        newName,
 		"config_json": string(configJSON),
 		"updated_at":  time.Now(),

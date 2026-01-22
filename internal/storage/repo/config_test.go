@@ -37,7 +37,7 @@ func TestConfigRepo_Create(t *testing.T) {
 
 	t.Run("Create Valid Config", func(t *testing.T) {
 		cfg := rulespec.NewConfig("测试配置")
-		record, err := r.Create(cfg)
+		record, err := r.Create(context.Background(), cfg)
 		if err != nil {
 			t.Fatalf("创建配置失败: %v", err)
 		}
@@ -56,7 +56,7 @@ func TestConfigRepo_Create(t *testing.T) {
 			{ID: "rule1", Name: "R1"},
 			{ID: "rule1", Name: "R2"}, // 重复 ID
 		}
-		_, err := r.Create(cfg)
+		_, err := r.Create(context.Background(), cfg)
 		if err == nil {
 			t.Error("预期因规则 ID 重复而报错，但实际未报错")
 		}
@@ -69,27 +69,27 @@ func TestConfigRepo_SetActive(t *testing.T) {
 	r := setupTestDB(t)
 
 	// 创建两个配置
-	c1, _ := r.Create(rulespec.NewConfig("C1"))
-	c2, _ := r.Create(rulespec.NewConfig("C2"))
+	c1, _ := r.Create(context.Background(), rulespec.NewConfig("C1"))
+	c2, _ := r.Create(context.Background(), rulespec.NewConfig("C2"))
 
 	// 1. 激活第一个
-	err := r.SetActive(c1.ID)
+	err := r.SetActive(context.Background(), c1.ID)
 	if err != nil {
 		t.Fatalf("激活 C1 失败: %v", err)
 	}
 
-	active, _ := r.GetActive()
+	active, _ := r.GetActive(context.Background())
 	if active.ID != c1.ID {
 		t.Errorf("预期激活 ID 为 %d，实际为 %d", c1.ID, active.ID)
 	}
 
 	// 2. 激活第二个，验证第一个被取消激活
-	err = r.SetActive(c2.ID)
+	err = r.SetActive(context.Background(), c2.ID)
 	if err != nil {
 		t.Fatalf("激活 C2 失败: %v", err)
 	}
 
-	active, _ = r.GetActive()
+	active, _ = r.GetActive(context.Background())
 	if active.ID != c2.ID {
 		t.Errorf("预期激活 ID 为 %d，实际为 %d", c2.ID, active.ID)
 	}
@@ -108,7 +108,7 @@ func TestConfigRepo_Upsert(t *testing.T) {
 	cfg := rulespec.NewConfig("初始配置")
 
 	// 1. 第一次 Upsert 应为创建
-	record, err := r.Upsert(cfg)
+	record, err := r.Upsert(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("首次 Upsert 失败: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestConfigRepo_Upsert(t *testing.T) {
 
 	// 2. 修改名称后再次 Upsert (ID 相同)
 	cfg.Name = "已更新名称"
-	updated, err := r.Upsert(cfg)
+	updated, err := r.Upsert(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("更新 Upsert 失败: %v", err)
 	}
@@ -134,10 +134,10 @@ func TestConfigRepo_Upsert(t *testing.T) {
 func TestConfigRepo_Rename(t *testing.T) {
 	r := setupTestDB(t)
 	cfg := rulespec.NewConfig("原名")
-	record, _ := r.Create(cfg)
+	record, _ := r.Create(context.Background(), cfg)
 
 	newName := "新名"
-	err := r.Rename(record.ID, newName)
+	err := r.Rename(context.Background(), record.ID, newName)
 	if err != nil {
 		t.Fatalf("重命名失败: %v", err)
 	}

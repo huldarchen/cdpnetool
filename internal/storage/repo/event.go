@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
@@ -165,8 +166,8 @@ type QueryOptions struct {
 }
 
 // Query 查询匹配事件历史
-func (r *EventRepo) Query(opts QueryOptions) ([]model.NetworkEventRecord, int64, error) {
-	query := r.Db.Model(&model.NetworkEventRecord{})
+func (r *EventRepo) Query(ctx context.Context, opts QueryOptions) ([]model.NetworkEventRecord, int64, error) {
+	query := r.Db.WithContext(ctx).Model(&model.NetworkEventRecord{})
 
 	// 应用过滤条件
 	if opts.SessionID != "" {
@@ -212,26 +213,26 @@ func (r *EventRepo) Query(opts QueryOptions) ([]model.NetworkEventRecord, int64,
 }
 
 // DeleteOldEvents 删除旧事件（数据清理）
-func (r *EventRepo) DeleteOldEvents(beforeTimestamp int64) (int64, error) {
-	result := r.Db.Where("timestamp < ?", beforeTimestamp).Delete(&model.NetworkEventRecord{})
+func (r *EventRepo) DeleteOldEvents(ctx context.Context, beforeTimestamp int64) (int64, error) {
+	result := r.Db.WithContext(ctx).Where("timestamp < ?", beforeTimestamp).Delete(&model.NetworkEventRecord{})
 	return result.RowsAffected, result.Error
 }
 
 // DeleteBySession 删除指定会话的事件
-func (r *EventRepo) DeleteBySession(sessionID string) error {
-	return r.Db.Where("session_id = ?", sessionID).Delete(&model.NetworkEventRecord{}).Error
+func (r *EventRepo) DeleteBySession(ctx context.Context, sessionID string) error {
+	return r.Db.WithContext(ctx).Where("session_id = ?", sessionID).Delete(&model.NetworkEventRecord{}).Error
 }
 
 // CleanupOldEvents 根据保留天数清理旧事件
-func (r *EventRepo) CleanupOldEvents(retentionDays int) (int64, error) {
+func (r *EventRepo) CleanupOldEvents(ctx context.Context, retentionDays int) (int64, error) {
 	if retentionDays <= 0 {
 		retentionDays = 7 // 默认保留 7 天
 	}
 	cutoff := time.Now().AddDate(0, 0, -retentionDays).UnixMilli()
-	return r.DeleteOldEvents(cutoff)
+	return r.DeleteOldEvents(ctx, cutoff)
 }
 
 // ClearAll 清空所有事件
-func (r *EventRepo) ClearAll() error {
-	return r.Db.Where("1 = 1").Delete(&model.NetworkEventRecord{}).Error
+func (r *EventRepo) ClearAll(ctx context.Context) error {
+	return r.Db.WithContext(ctx).Where("1 = 1").Delete(&model.NetworkEventRecord{}).Error
 }

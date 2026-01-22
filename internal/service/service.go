@@ -33,6 +33,8 @@ type session struct {
 	cfg    domain.SessionConfig
 	config *rulespec.Config
 	events chan domain.NetworkEvent
+	ctx    context.Context    // Session 级上下文
+	cancel context.CancelFunc // 用于手动停止 Session
 
 	mgr      *manager.Manager
 	intr     *interceptor.Interceptor
@@ -50,7 +52,7 @@ func New(l logger.Logger) *svc {
 }
 
 // StartSession 创建新会话并初始化组件
-func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
+func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domain.SessionID, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -70,6 +72,9 @@ func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 	id := domain.SessionID(uuid.New().String())
 	events := make(chan domain.NetworkEvent, cfg.PendingCapacity)
 
+	// 从传入的 ctx (App 级) 派生 Session 级 Context
+	sessionCtx, sessionCancel := context.WithCancel(ctx)
+
 	// 会话内组件
 	mgr := manager.New(cfg.DevToolsURL, s.log)
 	exec := executor.New()
@@ -81,13 +86,13 @@ func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 		Logger:           s.log,
 	})
 
-	// 拦截器回调：通过 manager 反查 targetID，再交给 handler 处理
-	intrHandler := func(client *cdp.Client, ctx context.Context, ev *fetch.RequestPausedReply) {
+	// 拦截器回调
+	intrHandler := func(client *cdp.Client, handlerCtx context.Context, ev *fetch.RequestPausedReply) {
 		var targetID domain.TargetID
 		if mgr != nil {
 			targetID = mgr.GetTargetIDByClient(client)
 		}
-		h.Handle(client, ctx, targetID, ev)
+		h.Handle(client, handlerCtx, targetID, ev)
 	}
 	intr := interceptor.New(intrHandler, s.log)
 
@@ -103,6 +108,8 @@ func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 		cfg:      cfg,
 		config:   nil,
 		events:   events,
+		ctx:      sessionCtx,
+		cancel:   sessionCancel,
 		mgr:      mgr,
 		intr:     intr,
 		h:        h,
@@ -110,13 +117,14 @@ func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 		workPool: workPool,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
 	// 探活 DevTools
-	_, err := mgr.ListTargets(ctx)
+	pingCtx, pingCancel := context.WithTimeout(sessionCtx, 3*time.Second)
+	defer pingCancel()
+
+	_, err := mgr.ListTargets(pingCtx)
 	if err != nil {
 		s.log.Err(err, "连接 DevTools 失败", "devtools", cfg.DevToolsURL)
+		sessionCancel()
 		return "", fmt.Errorf("%w: %v", domain.ErrDevToolsUnreachable, err)
 	}
 
@@ -127,7 +135,7 @@ func (s *svc) StartSession(cfg domain.SessionConfig) (domain.SessionID, error) {
 }
 
 // StopSession 停止并清理指定会话
-func (s *svc) StopSession(id domain.SessionID) error {
+func (s *svc) StopSession(ctx context.Context, id domain.SessionID) error {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	if ok {
@@ -137,12 +145,18 @@ func (s *svc) StopSession(id domain.SessionID) error {
 	if !ok {
 		return domain.ErrSessionNotFound
 	}
+
+	// 立即取消该会话的所有关联 Context
+	if ses.cancel != nil {
+		ses.cancel()
+	}
+
 	if ses.mgr != nil {
-		// 停用拦截并分离所有目标
+		// 停用拦截并分离所有目标 (此处 session 已在关闭中，使用 ctx 级上下文)
 		if ses.intr != nil {
 			sessions := ses.mgr.GetAttachedTargets()
 			for _, ms := range sessions {
-				_ = ses.intr.DisableTarget(ms.Client, ms.Ctx)
+				_ = ses.intr.DisableTarget(ms.Client, ctx)
 			}
 			if ses.workPool != nil {
 				ses.workPool.Stop()
@@ -156,7 +170,7 @@ func (s *svc) StopSession(id domain.SessionID) error {
 }
 
 // AttachTarget 为指定会话附着到浏览器目标
-func (s *svc) AttachTarget(id domain.SessionID, target domain.TargetID) error {
+func (s *svc) AttachTarget(ctx context.Context, id domain.SessionID, target domain.TargetID) error {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -168,8 +182,9 @@ func (s *svc) AttachTarget(id domain.SessionID, target domain.TargetID) error {
 		return errors.New("cdpnetool: manager not initialized")
 	}
 
-	// 附加目标
-	ms, err := ses.mgr.AttachTarget(target)
+	// 附加目标 (透传 Service 层的 ctx，或者是 Session 的 ctx)
+	// 按照计划，这种操作应优先使用传入的 Operation Context (ctx)
+	ms, err := ses.mgr.AttachTarget(ctx, target)
 	if err != nil {
 		s.log.Err(err, "附加浏览器目标失败", "session", string(id))
 		return err
@@ -177,7 +192,7 @@ func (s *svc) AttachTarget(id domain.SessionID, target domain.TargetID) error {
 
 	// 如果已启用拦截，对新目标立即启用
 	if ses.intr != nil && ses.intr.IsEnabled() {
-		_ = ses.intr.EnableTarget(ms.Client, ms.Ctx)
+		_ = ses.intr.EnableTarget(ms.Client, ctx)
 	}
 
 	s.log.Info("附加浏览器目标成功", "session", string(id), "target", string(target))
@@ -185,7 +200,7 @@ func (s *svc) AttachTarget(id domain.SessionID, target domain.TargetID) error {
 }
 
 // DetachTarget 为指定会话断开目标连接
-func (s *svc) DetachTarget(id domain.SessionID, target domain.TargetID) error {
+func (s *svc) DetachTarget(ctx context.Context, id domain.SessionID, target domain.TargetID) error {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -199,7 +214,7 @@ func (s *svc) DetachTarget(id domain.SessionID, target domain.TargetID) error {
 }
 
 // ListTargets 列出指定会话中的所有浏览器目标
-func (s *svc) ListTargets(id domain.SessionID) ([]domain.TargetInfo, error) {
+func (s *svc) ListTargets(ctx context.Context, id domain.SessionID) ([]domain.TargetInfo, error) {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -211,13 +226,14 @@ func (s *svc) ListTargets(id domain.SessionID) ([]domain.TargetInfo, error) {
 		return nil, errors.New("cdpnetool: manager not initialized")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// 使用传入的 ctx 并增加超时保护
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	return ses.mgr.ListTargets(ctx)
+	return ses.mgr.ListTargets(queryCtx)
 }
 
 // EnableInterception 启用会话的拦截功能
-func (s *svc) EnableInterception(id domain.SessionID) error {
+func (s *svc) EnableInterception(ctx context.Context, id domain.SessionID) error {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -241,9 +257,9 @@ func (s *svc) EnableInterception(id domain.SessionID) error {
 	}
 
 	ses.intr.SetEnabled(true)
-	// 为当前所有目标启用拦截
+	// 为当前所有目标启用拦截 (优先使用当前操作上下文 ctx)
 	for _, ms := range ses.mgr.GetAttachedTargets() {
-		if err := ses.intr.EnableTarget(ms.Client, ms.Ctx); err != nil {
+		if err := ses.intr.EnableTarget(ms.Client, ctx); err != nil {
 			s.log.Err(err, "为目标启用拦截失败", "session", string(id), "target", string(ms.ID))
 		}
 	}
@@ -253,7 +269,7 @@ func (s *svc) EnableInterception(id domain.SessionID) error {
 }
 
 // DisableInterception 停用会话的拦截功能
-func (s *svc) DisableInterception(id domain.SessionID) error {
+func (s *svc) DisableInterception(ctx context.Context, id domain.SessionID) error {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -266,7 +282,7 @@ func (s *svc) DisableInterception(id domain.SessionID) error {
 
 	ses.intr.SetEnabled(false)
 	for _, ms := range ses.mgr.GetAttachedTargets() {
-		if err := ses.intr.DisableTarget(ms.Client, ms.Ctx); err != nil {
+		if err := ses.intr.DisableTarget(ms.Client, ctx); err != nil {
 			s.log.Err(err, "停用目标拦截失败", "session", string(id), "target", string(ms.ID))
 		}
 	}
@@ -279,7 +295,7 @@ func (s *svc) DisableInterception(id domain.SessionID) error {
 }
 
 // LoadRules 为会话加载规则配置并应用到管理器
-func (s *svc) LoadRules(id domain.SessionID, cfg *rulespec.Config) error {
+func (s *svc) LoadRules(ctx context.Context, id domain.SessionID, cfg *rulespec.Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ses, ok := s.sessions[id]
@@ -301,7 +317,7 @@ func (s *svc) LoadRules(id domain.SessionID, cfg *rulespec.Config) error {
 }
 
 // GetRuleStats 返回会话内规则引擎的命中统计
-func (s *svc) GetRuleStats(id domain.SessionID) (domain.EngineStats, error) {
+func (s *svc) GetRuleStats(ctx context.Context, id domain.SessionID) (domain.EngineStats, error) {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
@@ -326,7 +342,7 @@ func (s *svc) GetRuleStats(id domain.SessionID) (domain.EngineStats, error) {
 }
 
 // SubscribeEvents 订阅会话事件流
-func (s *svc) SubscribeEvents(id domain.SessionID) (<-chan domain.NetworkEvent, error) {
+func (s *svc) SubscribeEvents(ctx context.Context, id domain.SessionID) (<-chan domain.NetworkEvent, error) {
 	s.mu.Lock()
 	ses, ok := s.sessions[id]
 	s.mu.Unlock()
