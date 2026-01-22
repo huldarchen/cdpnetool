@@ -60,13 +60,12 @@ type MatchedRule struct {
 	Rule *rulespec.Rule
 }
 
-// EvalForStage 评估指定阶段（请求或响应）的匹配规则
+// Eval 评估所有匹配规则，不区分阶段
 // 返回按优先级（Priority）从大到小排序的匹配规则列表
-func (e *Engine) EvalForStage(ctx *EvalContext, stage rulespec.Stage) []*MatchedRule {
-	e.mu.Lock()
-	e.total++
+func (e *Engine) Eval(ctx *EvalContext) []*MatchedRule {
+	e.mu.RLock()
 	config := e.config
-	e.mu.Unlock()
+	e.mu.RUnlock()
 
 	if config == nil || len(config.Rules) == 0 {
 		return nil
@@ -75,15 +74,11 @@ func (e *Engine) EvalForStage(ctx *EvalContext, stage rulespec.Stage) []*Matched
 	var matched []*MatchedRule
 	for i := range config.Rules {
 		rule := &config.Rules[i]
-		// 跳过禁用的规则
+		// 只检查规则是否启用，不检查 Stage
 		if !rule.Enabled {
 			continue
 		}
-		// 跳过不匹配阶段的规则
-		if rule.Stage != stage {
-			continue
-		}
-		// 评估匹配条件
+		// 仅评估匹配条件
 		if e.matchRule(ctx, &rule.Match) {
 			matched = append(matched, &MatchedRule{Rule: rule})
 		}
@@ -98,15 +93,32 @@ func (e *Engine) EvalForStage(ctx *EvalContext, stage rulespec.Stage) []*Matched
 		return matched[i].Rule.Priority > matched[j].Rule.Priority
 	})
 
-	// 更新统计
-	e.mu.Lock()
-	e.matched++
-	for _, m := range matched {
-		e.byRule[m.Rule.ID]++
-	}
-	e.mu.Unlock()
-
 	return matched
+}
+
+// RecordStats 显式记录匹配统计，避免 Eval 产生副作用
+func (e *Engine) RecordStats(matched []*MatchedRule) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.total++
+	if len(matched) > 0 {
+		e.matched++
+		for _, m := range matched {
+			e.byRule[m.Rule.ID]++
+		}
+	}
+}
+
+// EvalForStage 已废弃，仅为兼容性保留，内部调用 Eval
+func (e *Engine) EvalForStage(ctx *EvalContext, stage rulespec.Stage) []*MatchedRule {
+	all := e.Eval(ctx)
+	var filtered []*MatchedRule
+	for _, m := range all {
+		if m.Rule.Stage == stage {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
 }
 
 // matchRule 评估匹配规则

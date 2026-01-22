@@ -38,11 +38,13 @@ type Handler struct {
 
 // PendingRequest 暂存在内存中的请求阶段信息
 type PendingRequest struct {
-	TraceID      string
-	StartTime    time.Time
-	RequestInfo  domain.RequestInfo
-	MatchedRules []domain.RuleMatch
-	IsMatched    bool
+	TraceID         string
+	StartTime       time.Time
+	RequestInfo     domain.RequestInfo
+	MatchedRules    []domain.RuleMatch
+	RawMatchedRules []*rules.MatchedRule // V2: 存储完整匹配结果
+	IsMatched       bool
+	RequestModified bool // V2: 标记请求阶段是否发生了实际修改
 }
 
 // Config 配置选项
@@ -114,27 +116,40 @@ func (h *Handler) HandleRequest(
 	evalCtx := h.buildEvalContext(ev)
 	if h.engine == nil {
 		if h.collectUnmatched {
-			h.saveToPool(ev, nil, nil, false, traceID)
+			h.saveToPool(ev, nil, nil, false, traceID, nil, false)
 		}
 		h.executor.ContinueRequest(ctx, client, ev)
 		return
 	}
 
 	start := time.Now()
-	matchedRules := h.engine.EvalForStage(evalCtx, rulespec.StageRequest)
+	// V2 核心：一次性评估所有匹配规则（仅根据条件匹配，不区分阶段）
+	allMatchedRules := h.engine.Eval(evalCtx)
+	h.engine.RecordStats(allMatchedRules) // 显式记录统计
+	isMatched := len(allMatchedRules) > 0
+	ruleMatches := buildRuleMatches(allMatchedRules)
 
-	if len(matchedRules) == 0 {
+	// 场景 1：完全未匹配
+	if !isMatched {
 		if h.collectUnmatched {
-			h.saveToPool(ev, nil, nil, false, traceID)
+			h.saveToPool(ev, nil, nil, false, traceID, nil, false)
 		}
 		h.executor.ContinueRequest(ctx, client, ev)
 		return
 	}
 
-	// 1. 计算变更
-	mutation, blockRule, ruleMatches := h.computeRequestMutation(ev, matchedRules)
+	// 场景 2：已匹配
+	var requestMatched []*rules.MatchedRule
+	for _, mr := range allMatchedRules {
+		if mr.Rule.Stage == rulespec.StageRequest {
+			requestMatched = append(requestMatched, mr)
+		}
+	}
 
-	// 2. 执行修改
+	// 1. 计算并应用请求阶段修改
+	mutation, blockRule, _ := h.computeRequestMutation(ev, requestMatched)
+	isReqModified := mutation != nil && hasRequestMutation(mutation)
+
 	if blockRule != nil {
 		h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
 		originalInfo := h.captureRequestData(ev)
@@ -142,24 +157,26 @@ func (h *Handler) HandleRequest(
 		return
 	}
 
-	if mutation != nil && hasRequestMutation(mutation) {
+	if isReqModified {
 		h.executor.ApplyRequestMutation(ctx, client, ev, mutation)
 	} else {
 		h.executor.ContinueRequest(ctx, client, ev)
 	}
 
-	// 3. 安全预判：如果是天生的长连接（WebSocket/SSE），不入池（因为没有可采集的响应体）
+	// 3. 长连接预判
 	if isLongConnectionType(ev) {
-		l.Debug("检测到长连接请求，跳过响应阶段拦截", "type", ev.ResourceType)
-		if h.collectUnmatched || len(ruleMatches) > 0 {
-			originalInfo := h.captureRequestData(ev)
-			h.emitRequestEvent(targetID, "passed", ruleMatches, originalInfo, mutation, start, l)
+		l.Debug("检测到长连接请求，跳过响应阶段，立即发送原子事件", "type", ev.ResourceType)
+		originalInfo := h.captureRequestData(ev)
+		result := "matched"
+		if isReqModified {
+			result = "modified"
 		}
+		h.emitRequestEvent(targetID, result, ruleMatches, originalInfo, mutation, start, l)
 		return
 	}
 
-	// 4. 普通请求入池暂存，等待响应阶段
-	h.saveToPool(ev, mutation, ruleMatches, true, traceID)
+	// 4. 入池暂存：保存全阶段匹配信息，等待响应阶段
+	h.saveToPool(ev, mutation, ruleMatches, true, traceID, allMatchedRules, isReqModified)
 }
 
 // saveToPool 将请求信息存入待处理池
@@ -169,6 +186,8 @@ func (h *Handler) saveToPool(
 	matches []domain.RuleMatch,
 	isMatched bool,
 	traceID string,
+	rawRules []*rules.MatchedRule,
+	isReqModified bool, // 新增：请求阶段是否修改
 ) {
 	original := h.captureRequestData(ev)
 	finalRequest := original
@@ -177,11 +196,13 @@ func (h *Handler) saveToPool(
 	}
 
 	h.pendingPool.Store(ev.RequestID, &PendingRequest{
-		TraceID:      traceID,
-		StartTime:    time.Now(),
-		RequestInfo:  finalRequest,
-		MatchedRules: matches,
-		IsMatched:    isMatched,
+		TraceID:         traceID,
+		StartTime:       time.Now(),
+		RequestInfo:     finalRequest,
+		MatchedRules:    matches,
+		RawMatchedRules: rawRules,
+		IsMatched:       isMatched,
+		RequestModified: isReqModified,
 	})
 }
 
@@ -206,7 +227,7 @@ func (h *Handler) HandleResponse(
 	start := pending.StartTime
 	l = l.With("traceID", pending.TraceID)
 
-	// 2. 负载熔断预判：大文件或流媒体仅采集标头，不读响应体
+	// 2. 负载熔断预判
 	isUnsafe, reason := isUnsafeResponseBody(ev)
 	originalReqInfo := pending.RequestInfo
 	var originalResInfo domain.ResponseInfo
@@ -216,40 +237,56 @@ func (h *Handler) HandleResponse(
 		originalResInfo = h.captureResponseHeadersOnly(ev)
 		originalResInfo.Body = fmt.Sprintf("[Body omitted: %s]", reason)
 	} else {
-		// 正常采集响应体
 		_, originalResInfo = h.captureResponseData(client, ctx, ev)
 	}
 
-	// 3. 计算并应用响应阶段的变更
-	evalCtx := h.buildEvalContext(ev)
-	matchedRules := h.engine.EvalForStage(evalCtx, rulespec.StageResponse)
-
-	mutation, ruleMatches, finalBody := h.computeResponseMutation(ev, matchedRules, originalResInfo.Body)
-
+	// 3. 执行响应阶段行为 (基于预计算的规则)
 	var finalResult string
-	if mutation != nil && hasResponseMutation(mutation) {
-		// 负载熔断保护：如果触发了熔断，禁止修改 Body
-		if isUnsafe && mutation.Body != nil {
-			l.Warn("熔断状态下规则尝试修改响应体，操作被忽略", "reason", reason)
-			mutation.Body = nil
+	var finalBody string
+	var resMutation *executor.ResponseMutation
+
+	if pending.IsMatched {
+		// 仅筛选响应阶段规则
+		var responseRules []*rules.MatchedRule
+		for _, mr := range pending.RawMatchedRules {
+			if mr.Rule.Stage == rulespec.StageResponse {
+				responseRules = append(responseRules, mr)
+			}
 		}
 
-		if mutation.Body == nil && finalBody != "" && !isUnsafe {
-			mutation.Body = &finalBody
+		// 计算变更
+		resMutation, _, finalBody = h.computeResponseMutation(ev, responseRules, originalResInfo.Body)
+
+		if resMutation != nil && hasResponseMutation(resMutation) {
+			// 负载熔断保护
+			if isUnsafe && resMutation.Body != nil {
+				l.Warn("熔断状态下规则尝试修改响应体，操作被忽略", "reason", reason)
+				resMutation.Body = nil
+			}
+
+			if resMutation.Body == nil && finalBody != "" && !isUnsafe && finalBody != originalResInfo.Body {
+				resMutation.Body = &finalBody
+			}
+			h.executor.ApplyResponseMutation(ctx, client, ev, resMutation)
+			finalResult = "modified"
+		} else {
+			h.executor.ContinueResponse(ctx, client, ev)
+			// 如果响应没改，但请求阶段改了，结果仍标记为 modified
+			if pending.RequestModified {
+				finalResult = "modified"
+			} else {
+				finalResult = "matched"
+			}
 		}
-		h.executor.ApplyResponseMutation(ctx, client, ev, mutation)
-		finalResult = "modified"
 	} else {
+		// 未匹配规则，纯采集路径
 		h.executor.ContinueResponse(ctx, client, ev)
 		finalResult = "passed"
-		if pending.IsMatched {
-			finalResult = "matched"
-		}
+		finalBody = originalResInfo.Body
 	}
 
 	// 4. 发送原子化全周期事件
-	allMatches := append(pending.MatchedRules, ruleMatches...)
-	h.emitResponseEvent(targetID, finalResult, allMatches, originalReqInfo, originalResInfo, mutation, finalBody, start, l)
+	h.emitResponseEvent(targetID, finalResult, pending.MatchedRules, originalReqInfo, originalResInfo, resMutation, finalBody, start, l)
 }
 
 // captureResponseHeadersOnly 仅捕获响应标头
