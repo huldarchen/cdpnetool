@@ -1,4 +1,3 @@
-// Package rulespec 定义规则配置的类型规范 (v2)
 package rulespec
 
 import (
@@ -10,7 +9,7 @@ import (
 
 // 配置版本常量
 const (
-	DefaultConfigVersion = "1.0" // 默认配置版本
+	DefaultConfigVersion = "1.0"
 )
 
 // ID 格式约束
@@ -36,14 +35,14 @@ type Config struct {
 	Rules       []Rule         `json:"rules"`       // 规则列表
 }
 
-// GenerateConfigID 生成配置 ID，格式：config-YYYYMMDD-随机6位
+// GenerateConfigID 生成配置 ID
 func GenerateConfigID() string {
 	dateStr := time.Now().Format("20060102")
 	randomStr := generateRandomString(6)
 	return fmt.Sprintf("config-%s-%s", dateStr, randomStr)
 }
 
-// GenerateRuleID 生成规则 ID，格式：rule-XXX（三位数字序号）
+// GenerateRuleID 生成规则 ID
 func GenerateRuleID(index int) string {
 	return fmt.Sprintf("rule-%03d", index+1)
 }
@@ -75,7 +74,6 @@ func generateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, length)
 	if _, err := rand.Read(b); err != nil {
-		// 如果随机数生成失败，使用时间戳作为回退
 		return fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
 	}
 	for i := range b {

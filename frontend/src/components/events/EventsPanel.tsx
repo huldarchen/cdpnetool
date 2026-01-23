@@ -46,24 +46,28 @@ export function EventsPanel({
 
   return (
     <div className="h-full flex flex-col">
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'matched' | 'unmatched')} className="flex-1 flex flex-col">
-        <TabsList className="w-fit mb-4">
-          <TabsTrigger value="matched" className="gap-2">
-            <CheckCircle className="w-4 h-4" />
-            匹配请求
-            {totalMatched > 0 && (
-              <Badge variant="secondary" className="ml-1 text-xs">{totalMatched}</Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="unmatched" className="gap-2">
-            <XCircle className="w-4 h-4" />
-            未匹配请求
-            {totalUnmatched > 0 && (
-              <Badge variant="secondary" className="ml-1 text-xs">{totalUnmatched}</Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
+      <div className="flex items-center justify-between mb-2">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'matched' | 'unmatched')} className="flex-1">
+          <TabsList className="w-fit">
+            <TabsTrigger value="matched" className="gap-2">
+              <CheckCircle className="w-4 h-4" />
+              匹配请求
+              {totalMatched > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">{totalMatched}</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="unmatched" className="gap-2">
+              <XCircle className="w-4 h-4" />
+              未匹配请求
+              {totalUnmatched > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">{totalUnmatched}</Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
 
+      <Tabs value={activeTab} className="flex-1 flex flex-col overflow-hidden">
         <TabsContent value="matched" className="flex-1 m-0 overflow-hidden">
           <MatchedEventsList events={matchedEvents} onClear={onClearMatched} />
         </TabsContent>

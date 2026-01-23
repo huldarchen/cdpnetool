@@ -110,6 +110,10 @@ export function SetActiveConfig(arg1) {
   return window['go']['gui']['App']['SetActiveConfig'](arg1);
 }
 
+export function SetCollectionMode(arg1, arg2) {
+  return window['go']['gui']['App']['SetCollectionMode'](arg1, arg2);
+}
+
 export function SetDirty(arg1) {
   return window['go']['gui']['App']['SetDirty'](arg1);
 }
@@ -128,4 +132,8 @@ export function StartSession(arg1) {
 
 export function StopSession(arg1) {
   return window['go']['gui']['App']['StopSession'](arg1);
+}
+
+export function TranslateError(arg1) {
+  return window['go']['gui']['App']['TranslateError'](arg1);
 }

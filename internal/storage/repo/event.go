@@ -1,32 +1,60 @@
-package storage
+package repo
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
 
-	"cdpnetool/pkg/model"
+	"cdpnetool/internal/logger"
+	"cdpnetool/internal/storage/model"
+	"cdpnetool/pkg/domain"
+
+	"gorm.io/gorm"
 )
 
-// EventRepo 事件仓库（只存储匹配事件到数据库）
+// EventRepoOptions 事件仓库配置选项
+type EventRepoOptions struct {
+	BatchSize     int           // 批量写入大小
+	FlushInterval time.Duration // 自动刷新间隔
+	MaxBufferSize int           // 缓冲区最大容量（防止内存溢出）
+}
+
+// DefaultEventRepoOptions 默认配置
+func DefaultEventRepoOptions() EventRepoOptions {
+	return EventRepoOptions{
+		BatchSize:     50,
+		FlushInterval: 5 * time.Second,
+		MaxBufferSize: 1000,
+	}
+}
+
+// EventRepo 事件仓库（存储匹配事件到数据库）
 type EventRepo struct {
-	db        *DB
-	buffer    []MatchedEventRecord
-	bufferMu  sync.Mutex
-	batchSize int
-	flushCh   chan struct{}
-	stopCh    chan struct{}
-	wg        sync.WaitGroup
+	BaseRepository[model.NetworkEventRecord]
+	log      logger.Logger
+	opts     EventRepoOptions
+	buffer   []model.NetworkEventRecord
+	bufferMu sync.Mutex
+	flushCh  chan struct{}
+	stopCh   chan struct{}
+	wg       sync.WaitGroup
 }
 
 // NewEventRepo 创建事件仓库实例
-func NewEventRepo(db *DB) *EventRepo {
+func NewEventRepo(db *gorm.DB, log logger.Logger, opts ...EventRepoOptions) *EventRepo {
+	opt := DefaultEventRepoOptions()
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+
 	r := &EventRepo{
-		db:        db,
-		buffer:    make([]MatchedEventRecord, 0, 100),
-		batchSize: 50,
-		flushCh:   make(chan struct{}, 1),
-		stopCh:    make(chan struct{}),
+		BaseRepository: *NewBaseRepository[model.NetworkEventRecord](db),
+		log:            log,
+		opts:           opt,
+		buffer:         make([]model.NetworkEventRecord, 0, opt.BatchSize),
+		flushCh:        make(chan struct{}, 1),
+		stopCh:         make(chan struct{}),
 	}
 	// 启动异步写入协程
 	r.wg.Add(1)
@@ -37,7 +65,7 @@ func NewEventRepo(db *DB) *EventRepo {
 // asyncWriter 异步批量写入协程
 func (r *EventRepo) asyncWriter() {
 	defer r.wg.Done()
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(r.opts.FlushInterval)
 	defer ticker.Stop()
 
 	for {
@@ -62,13 +90,12 @@ func (r *EventRepo) flush() {
 		return
 	}
 	toWrite := r.buffer
-	r.buffer = make([]MatchedEventRecord, 0, 100)
+	r.buffer = make([]model.NetworkEventRecord, 0, r.opts.BatchSize)
 	r.bufferMu.Unlock()
 
 	// 批量插入
-	if err := r.db.GormDB().CreateInBatches(toWrite, 100).Error; err != nil {
-		// 记录错误但不阻塞
-		_ = err
+	if err := r.Db.CreateInBatches(toWrite, r.opts.BatchSize).Error; err != nil {
+		r.log.Error("批量保存匹配事件到数据库失败", "error", err, "count", len(toWrite))
 	}
 }
 
@@ -78,14 +105,28 @@ func (r *EventRepo) Stop() {
 	r.wg.Wait()
 }
 
-// RecordMatched 记录匹配事件（异步写入数据库）
-func (r *EventRepo) RecordMatched(evt *model.MatchedEvent) {
+// Record 记录网络事件（异步写入数据库，只存储匹配事件）
+func (r *EventRepo) Record(evt *domain.NetworkEvent) {
+	// 只记录匹配事件
+	if !evt.IsMatched {
+		return
+	}
+
+	r.bufferMu.Lock()
+	// 容量保护：如果缓冲区已满，丢弃新事件并记录警告
+	if len(r.buffer) >= r.opts.MaxBufferSize {
+		r.bufferMu.Unlock()
+		r.log.Warn("事件缓冲区已满，丢弃当前事件", "url", evt.Request.URL)
+		return
+	}
+	r.bufferMu.Unlock()
+
 	// 序列化规则列表
 	matchedRulesJSON, _ := json.Marshal(evt.MatchedRules)
 	requestJSON, _ := json.Marshal(evt.Request)
 	responseJSON, _ := json.Marshal(evt.Response)
 
-	record := MatchedEventRecord{
+	record := model.NetworkEventRecord{
 		SessionID:        string(evt.Session),
 		TargetID:         string(evt.Target),
 		URL:              evt.Request.URL,
@@ -101,7 +142,7 @@ func (r *EventRepo) RecordMatched(evt *model.MatchedEvent) {
 
 	r.bufferMu.Lock()
 	r.buffer = append(r.buffer, record)
-	needFlush := len(r.buffer) >= r.batchSize
+	needFlush := len(r.buffer) >= r.opts.BatchSize
 	r.bufferMu.Unlock()
 
 	if needFlush {
@@ -125,8 +166,8 @@ type QueryOptions struct {
 }
 
 // Query 查询匹配事件历史
-func (r *EventRepo) Query(opts QueryOptions) ([]MatchedEventRecord, int64, error) {
-	query := r.db.GormDB().Model(&MatchedEventRecord{})
+func (r *EventRepo) Query(ctx context.Context, opts QueryOptions) ([]model.NetworkEventRecord, int64, error) {
+	query := r.Db.WithContext(ctx).Model(&model.NetworkEventRecord{})
 
 	// 应用过滤条件
 	if opts.SessionID != "" {
@@ -162,7 +203,7 @@ func (r *EventRepo) Query(opts QueryOptions) ([]MatchedEventRecord, int64, error
 		opts.Limit = 1000
 	}
 
-	var records []MatchedEventRecord
+	var records []model.NetworkEventRecord
 	err := query.Order("timestamp DESC").
 		Offset(opts.Offset).
 		Limit(opts.Limit).
@@ -171,37 +212,27 @@ func (r *EventRepo) Query(opts QueryOptions) ([]MatchedEventRecord, int64, error
 	return records, total, err
 }
 
-// GetByID 根据ID获取事件
-func (r *EventRepo) GetByID(id uint) (*MatchedEventRecord, error) {
-	var record MatchedEventRecord
-	err := r.db.GormDB().First(&record, id).Error
-	if err != nil {
-		return nil, err
-	}
-	return &record, nil
-}
-
 // DeleteOldEvents 删除旧事件（数据清理）
-func (r *EventRepo) DeleteOldEvents(beforeTimestamp int64) (int64, error) {
-	result := r.db.GormDB().Where("timestamp < ?", beforeTimestamp).Delete(&MatchedEventRecord{})
+func (r *EventRepo) DeleteOldEvents(ctx context.Context, beforeTimestamp int64) (int64, error) {
+	result := r.Db.WithContext(ctx).Where("timestamp < ?", beforeTimestamp).Delete(&model.NetworkEventRecord{})
 	return result.RowsAffected, result.Error
 }
 
 // DeleteBySession 删除指定会话的事件
-func (r *EventRepo) DeleteBySession(sessionID string) error {
-	return r.db.GormDB().Where("session_id = ?", sessionID).Delete(&MatchedEventRecord{}).Error
+func (r *EventRepo) DeleteBySession(ctx context.Context, sessionID string) error {
+	return r.Db.WithContext(ctx).Where("session_id = ?", sessionID).Delete(&model.NetworkEventRecord{}).Error
 }
 
 // CleanupOldEvents 根据保留天数清理旧事件
-func (r *EventRepo) CleanupOldEvents(retentionDays int) (int64, error) {
+func (r *EventRepo) CleanupOldEvents(ctx context.Context, retentionDays int) (int64, error) {
 	if retentionDays <= 0 {
 		retentionDays = 7 // 默认保留 7 天
 	}
 	cutoff := time.Now().AddDate(0, 0, -retentionDays).UnixMilli()
-	return r.DeleteOldEvents(cutoff)
+	return r.DeleteOldEvents(ctx, cutoff)
 }
 
 // ClearAll 清空所有事件
-func (r *EventRepo) ClearAll() error {
-	return r.db.GormDB().Where("1 = 1").Delete(&MatchedEventRecord{}).Error
+func (r *EventRepo) ClearAll(ctx context.Context) error {
+	return r.Db.WithContext(ctx).Where("1 = 1").Delete(&model.NetworkEventRecord{}).Error
 }

@@ -1,4 +1,4 @@
-package model
+package domain
 
 // SessionID 会话ID
 type SessionID string
@@ -34,25 +34,13 @@ type TargetInfo struct {
 	IsCurrent bool     `json:"isCurrent"`
 }
 
-// NetworkEvent 网络请求事件
-type NetworkEvent struct {
-	Session      SessionID    `json:"session"`
-	Target       TargetID     `json:"target"`
-	Timestamp    int64        `json:"timestamp"`
-	IsMatched    bool         `json:"isMatched"`
-	Request      RequestInfo  `json:"request"`
-	Response     ResponseInfo `json:"response,omitempty"`
-	FinalResult  string       `json:"finalResult,omitempty"`
-	MatchedRules []RuleMatch  `json:"matchedRules,omitempty"`
-}
-
 // RequestInfo 请求信息
 type RequestInfo struct {
 	URL          string            `json:"url"`
 	Method       string            `json:"method"`
 	Headers      map[string]string `json:"headers"`
 	Body         string            `json:"body"`
-	ResourceType string            `json:"resourceType,omitempty"` // document/xhr/script/image等
+	ResourceType string            `json:"resourceType,omitempty"`
 }
 
 // ResponseInfo 响应信息
@@ -60,35 +48,30 @@ type ResponseInfo struct {
 	StatusCode int               `json:"statusCode"`
 	Headers    map[string]string `json:"headers"`
 	Body       string            `json:"body"`
-	Timing     ResponseTiming    `json:"timing,omitempty"` // 响应时间信息
+	Timing     ResponseTiming    `json:"timing,omitempty"`
 }
 
 // ResponseTiming 响应时间信息
 type ResponseTiming struct {
-	StartTime int64 `json:"startTime"` // 开始时间
-	EndTime   int64 `json:"endTime"`   // 结束时间
+	StartTime int64 `json:"startTime"`
+	EndTime   int64 `json:"endTime"`
 }
 
 // RuleMatch 规则匹配信息
 type RuleMatch struct {
 	RuleID   string   `json:"ruleId"`
 	RuleName string   `json:"ruleName"`
-	Actions  []string `json:"actions"` // 实际执行的 action 类型列表
+	Actions  []string `json:"actions"`
 }
 
-// MatchedEvent 匹配的请求事件（会存入数据库）
-type MatchedEvent struct {
-	NetworkEvent
-}
-
-// UnmatchedEvent 未匹配的请求事件（仅内存，不存数据库）
-type UnmatchedEvent struct {
-	NetworkEvent
-}
-
-// InterceptEvent 统一事件接口（用于通道传输）
-type InterceptEvent struct {
-	IsMatched bool            `json:"isMatched"`
-	Matched   *MatchedEvent   `json:"matched,omitempty"`
-	Unmatched *UnmatchedEvent `json:"unmatched,omitempty"`
+// NetworkEvent 网络请求事件（统一所有拦截事件）
+type NetworkEvent struct {
+	Session      SessionID    `json:"session"`
+	Target       TargetID     `json:"target"`
+	Timestamp    int64        `json:"timestamp"`
+	IsMatched    bool         `json:"isMatched"` // 是否匹配规则
+	Request      RequestInfo  `json:"request"`
+	Response     ResponseInfo `json:"response,omitempty"`
+	FinalResult  string       `json:"finalResult,omitempty"`  // blocked / modified / passed
+	MatchedRules []RuleMatch  `json:"matchedRules,omitempty"` // 匹配的规则列表
 }

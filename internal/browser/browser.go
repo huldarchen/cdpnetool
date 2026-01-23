@@ -31,7 +31,7 @@ type Browser struct {
 }
 
 // Start 启动浏览器并等待CDP服务就绪
-func Start(opts Options) (*Browser, error) {
+func Start(ctx context.Context, opts Options) (*Browser, error) {
 	exe := opts.ExecPath
 	if exe == "" {
 		exe = defaultChromePath()
@@ -39,37 +39,44 @@ func Start(opts Options) (*Browser, error) {
 	if exe == "" {
 		return nil, errors.New("chrome executable not found")
 	}
-	// 优先使用指定端口，否则尝试 9222，最后选择随机空闲端口
+
 	port := opts.RemoteDebuggingPort
 	if port == 0 {
 		port = 9222
 	}
+
 	finalPort, err := pickPort(port)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pick port: %w", err)
 	}
+
 	port = finalPort
 	args := buildLaunchArgs(port, opts)
-	cmd := exec.Command(exe, args...)
+	cmd := exec.CommandContext(ctx, exe, args...)
 	if len(opts.Env) > 0 {
 		cmd.Env = append(os.Environ(), opts.Env...)
 	}
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start browser: %w", err)
 	}
+
 	b := &Browser{cmd: cmd, DevToolsURL: fmt.Sprintf("http://127.0.0.1:%d", port), port: port}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	waitCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if err := waitDevToolsReady(ctx, b.DevToolsURL); err != nil {
+
+	if err := waitDevToolsReady(waitCtx, b.DevToolsURL); err != nil {
 		_ = b.Stop(2 * time.Second)
 		return nil, fmt.Errorf("devtools not ready: %w", err)
 	}
+
 	return b, nil
 }
 
-// Stop 关闭浏览器进程（尽力而为）
+// Stop 关闭浏览器进程
 func (b *Browser) Stop(timeout time.Duration) error {
 	if b == nil || b.cmd == nil || b.cmd.Process == nil {
 		return nil
@@ -94,12 +101,13 @@ func defaultChromePath() string {
 			return p
 		}
 	}
-	// 退化为 PATH 查找
+
 	for _, name := range []string{"chrome", "google-chrome", "chromium", "chromium-browser"} {
 		if p, err := exec.LookPath(name); err == nil {
 			return p
 		}
 	}
+
 	return ""
 }
 
@@ -140,12 +148,14 @@ func pickPort(preferred int) (int, error) {
 			return preferred, nil
 		}
 	}
+
 	// 首选端口不可用，选择随机空闲端口
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return 0, fmt.Errorf("failed to find free port: %w", err)
 	}
 	defer l.Close()
+
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
@@ -192,7 +202,7 @@ func buildLaunchArgs(port int, opts Options) []string {
 		args = append(args, "--headless=new", "--disable-gpu")
 	}
 
-	// 额外参数（放在最后，允许覆盖默认参数）
+	// 额外参数
 	if len(opts.Args) > 0 {
 		args = append(args, opts.Args...)
 	}

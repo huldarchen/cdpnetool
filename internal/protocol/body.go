@@ -1,9 +1,8 @@
-package cdp
+package protocol
 
 import (
 	"encoding/base64"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/mafredri/cdp/protocol/fetch"
 )
@@ -38,20 +37,4 @@ func GetRequestBody(ev *fetch.RequestPausedReply) string {
 	}
 
 	return ""
-}
-
-// IsTextualBody 判断 Body 是否为文本类型，以便安全展示或匹配
-func IsTextualBody(data []byte, contentType string) bool {
-	lc := strings.ToLower(contentType)
-	// 常见的文本类型
-	if strings.HasPrefix(lc, "text/") ||
-		strings.Contains(lc, "json") ||
-		strings.Contains(lc, "xml") ||
-		strings.Contains(lc, "javascript") ||
-		strings.Contains(lc, "x-www-form-urlencoded") {
-		return true
-	}
-
-	// 启发式检测：如果是有效的 UTF-8 且不包含过多的控制字符
-	return utf8.Valid(data)
 }

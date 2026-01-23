@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { 
-  InterceptEvent, 
+  NetworkEvent,
   MatchedEventWithId, 
   UnmatchedEventWithId 
 } from '@/types/events'
@@ -38,7 +38,7 @@ interface SessionState {
   resetSession: () => void
   
   // 事件操作
-  addInterceptEvent: (event: InterceptEvent) => void
+  addInterceptEvent: (event: NetworkEvent) => void
   clearMatchedEvents: () => void
   clearUnmatchedEvents: () => void
   clearAllEvents: () => void
@@ -79,40 +79,25 @@ export const useSessionStore = create<SessionState>((set) => ({
   addInterceptEvent: (event) => set((state) => {
     console.log('[Store] 处理拦截事件:', event)
     
-    if (event.isMatched && event.matched) {
-      console.log('[Store] 匹配事件 matched 对象:', event.matched)
-      console.log('[Store] matched.networkEvent:', event.matched.networkEvent)
-      
-      // 处理后端数据结构：检查是否有 networkEvent 层
-      const networkEvent = event.matched.networkEvent || event.matched
-      
+    // 后端现在直接发送 NetworkEvent 扁平对象
+    // 我们根据 isMatched 字段进行分发，并为 UI 组件构造预期的嵌套结构
+    if (event.isMatched) {
       const eventWithId: MatchedEventWithId = {
-        ...event.matched,
-        networkEvent: networkEvent,
-        id: generateEventId(networkEvent.timestamp),
+        networkEvent: event,
+        id: generateEventId(event.timestamp),
       }
-      console.log('[Store] 生成匹配事件 ID:', eventWithId.id)
       return {
-        matchedEvents: [eventWithId, ...state.matchedEvents].slice(0, 200) // 保留最新 200 条
+        matchedEvents: [eventWithId, ...state.matchedEvents].slice(0, 200)
       }
-    } else if (!event.isMatched && event.unmatched) {
-      console.log('[Store] 未匹配事件 unmatched 对象:', event.unmatched)
-      
-      // 处理后端数据结构
-      const networkEvent = event.unmatched.networkEvent || event.unmatched
-      
+    } else {
       const eventWithId: UnmatchedEventWithId = {
-        ...event.unmatched,
-        networkEvent: networkEvent,
-        id: generateEventId(networkEvent.timestamp),
+        networkEvent: event,
+        id: generateEventId(event.timestamp),
       }
-      console.log('[Store] 生成未匹配事件 ID:', eventWithId.id)
       return {
-        unmatchedEvents: [eventWithId, ...state.unmatchedEvents].slice(0, 100) // 保留最新 100 条
+        unmatchedEvents: [eventWithId, ...state.unmatchedEvents].slice(0, 100)
       }
     }
-    console.log('[Store] 事件数据格式不正确，忽略')
-    return {}
   }),
   
   clearMatchedEvents: () => set({ matchedEvents: [] }),
