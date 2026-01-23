@@ -11,7 +11,7 @@ import { useSessionStore, useThemeStore } from '@/stores'
 import { RuleListEditor } from '@/components/rules'
 import { EventsPanel } from '@/components/events'
 import type { Rule, Config } from '@/types/rules'
-import type { InterceptEvent } from '@/types/events'
+import type { NetworkEvent } from '@/types/events'
 import { createEmptyConfig } from '@/types/rules'
 import { 
   RefreshCw, 
@@ -297,7 +297,7 @@ function App() {
     // @ts-ignore
     if (window.runtime?.EventsOn) {
       // @ts-ignore
-      const unsubscribe = window.runtime.EventsOn('intercept-event', (event: InterceptEvent) => {
+      const unsubscribe = window.runtime.EventsOn('intercept-event', (event: NetworkEvent) => {
         console.log('[Events] 收到拦截事件:', event)
         // 事件由 store 处理，自动分发到匹配/未匹配列表
         addInterceptEvent(event)
