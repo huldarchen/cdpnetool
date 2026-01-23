@@ -84,6 +84,7 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 		Events:           events,
 		ProcessTimeoutMS: cfg.ProcessTimeoutMS,
 		Logger:           s.log,
+		CollectUnmatched: true, // 默认开启收集未匹配请求
 	})
 
 	// 拦截器回调

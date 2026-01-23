@@ -95,8 +95,6 @@ function App() {
     setConnected,
     isIntercepting,
     setIntercepting,
-    collectUnmatched,
-    setCollectUnmatched,
     setActiveConfigId,
     targets,
     setTargets,
@@ -268,30 +266,6 @@ function App() {
     }
   }
 
-  // 处理采集模式变更
-  const handleCollectUnmatchedChange = async (enabled: boolean) => {
-    if (!sessionId) {
-      toast({ variant: 'destructive', title: '请先连接到浏览器' })
-      return
-    }
-    
-    try {
-      const result = await window.go?.gui?.App?.SetCollectionMode(sessionId, enabled)
-      if (result?.success) {
-        setCollectUnmatched(enabled)
-        toast({ 
-          variant: 'success', 
-          title: enabled ? '捕获模式已开启' : '捕获模式已关闭',
-          description: enabled ? '现在将收集所有未匹配的请求' : '仅记录匹配规则的请求'
-        })
-      } else {
-        toast({ variant: 'destructive', title: '设置失败', description: result?.message })
-      }
-    } catch (e) {
-      toast({ variant: 'destructive', title: '操作错误', description: String(e) })
-    }
-  }
-
   // 监听 Wails 事件
   useEffect(() => {
     // @ts-ignore
@@ -421,8 +395,6 @@ function App() {
               <EventsPanel 
                 matchedEvents={matchedEvents} 
                 unmatchedEvents={unmatchedEvents}
-                collectUnmatched={collectUnmatched}
-                onCollectUnmatchedChange={handleCollectUnmatchedChange}
                 onClearMatched={clearMatchedEvents}
                 onClearUnmatched={clearUnmatchedEvents}
               />
