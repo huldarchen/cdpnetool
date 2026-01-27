@@ -320,7 +320,10 @@ func (e *Executor) ApplyResponseMutation(ctx context.Context, client *cdp.Client
 			ResponseHeaders: headers,
 			Body:            []byte(*mut.Body),
 		}
-		_ = client.Fetch.FulfillRequest(ctx, args)
+		if err := client.Fetch.FulfillRequest(ctx, args); err != nil {
+			// 兜底：如果 FulfillRequest 失败，执行 ContinueResponse 以避免请求挂起
+			_ = client.Fetch.ContinueResponse(ctx, &fetch.ContinueResponseArgs{RequestID: ev.RequestID})
+		}
 		return
 	}
 
@@ -483,6 +486,19 @@ func (e *Executor) buildFinalResponseHeaders(ev *fetch.RequestPausedReply, mut *
 		for k := range headers {
 			if strings.EqualFold(k, name) {
 				delete(headers, k)
+			}
+		}
+	}
+
+	// 如果 Body 被修改了，必须清理可能导致浏览器解析错误的特定头部
+	if mut.Body != nil {
+		headersToDrop := []string{"content-encoding", "content-length", "content-md5", "etag"}
+		for _, name := range headersToDrop {
+			delete(headers, name)
+			for k := range headers {
+				if strings.EqualFold(k, name) {
+					delete(headers, k)
+				}
 			}
 		}
 	}
