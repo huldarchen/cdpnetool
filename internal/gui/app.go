@@ -371,7 +371,9 @@ func (a *App) LaunchBrowser(headless bool) api.Response[BrowserData] {
 	}
 
 	opts := browser.Options{
-		Headless: headless,
+		Logger:        a.log,
+		Headless:      headless,
+		ClearUserData: true,
 	}
 
 	b, err := browser.Start(a.ctx, opts)

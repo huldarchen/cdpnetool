@@ -177,13 +177,17 @@ func (s *svc) StopSession(ctx context.Context, id domain.SessionID) error {
 		if ses.intr != nil {
 			sessions := ses.mgr.GetAttachedTargets()
 			for _, ms := range sessions {
-				_ = ses.intr.DisableTarget(ms.Client, ctx)
+				if err := ses.intr.DisableTarget(ms.Client, ctx); err != nil {
+					s.log.Warn("停止会话时停用目标拦截失败", "target", string(ms.ID), "error", err)
+				}
 			}
 			if ses.workPool != nil {
 				ses.workPool.Stop()
 			}
 		}
-		_ = ses.mgr.DetachAll()
+		if err := ses.mgr.DetachAll(); err != nil {
+			s.log.Warn("停止会话时断开所有目标连接失败", "error", err)
+		}
 	}
 	close(ses.events)
 	s.log.Info("会话已停止", "session", string(id))
@@ -213,7 +217,9 @@ func (s *svc) AttachTarget(ctx context.Context, id domain.SessionID, target doma
 
 	// 如果已启用拦截，对新目标立即启用
 	if ses.intr != nil && ses.intr.IsEnabled() {
-		_ = ses.intr.EnableTarget(ms.Client, ctx)
+		if err := ses.intr.EnableTarget(ms.Client, ctx); err != nil {
+			s.log.Err(err, "为新附加目标启用拦截失败", "session", string(id), "target", string(target))
+		}
 	}
 
 	s.log.Info("附加浏览器目标成功", "session", string(id), "target", string(target))
