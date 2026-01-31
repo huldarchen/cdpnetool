@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useSessionStore, useThemeStore } from '@/stores'
 import { RuleListEditor } from '@/components/rules'
 import { EventsPanel } from '@/components/events'
+import { NetworkPanel } from '@/components/network/NetworkPanel'
 import type { Rule, Config } from '@/types/rules'
 import type { NetworkEvent } from '@/types/events'
 import { createEmptyConfig } from '@/types/rules'
@@ -60,6 +61,7 @@ declare global {
           DisableInterception: (id: string) => Promise<ApiResponse<EmptyData>>
           LoadRules: (id: string, json: string) => Promise<ApiResponse<EmptyData>>
           GetRuleStats: (id: string) => Promise<ApiResponse<{ stats: any }>>
+          EnableTrafficCapture: (id: string, enabled: boolean) => Promise<ApiResponse<EmptyData>>
           ApproveRequest: (itemId: string, mutationsJson: string) => Promise<ApiResponse<EmptyData>>
           ApproveResponse: (itemId: string, mutationsJson: string) => Promise<ApiResponse<EmptyData>>
           Reject: (itemId: string) => Promise<ApiResponse<EmptyData>>
@@ -101,8 +103,13 @@ function App() {
     attachedTargetId,
     setAttachedTargetId,
     matchedEvents,
+    trafficEvents,
+    isTrafficCapturing,
+    setTrafficCapturing,
     addInterceptEvent,
+    addTrafficEvent,
     clearMatchedEvents,
+    clearTrafficEvents,
     resetSession,
   } = useSessionStore()
   
@@ -241,12 +248,18 @@ function App() {
     const isCurrentlyAttached = attachedTargetId === targetId
     
     try {
-      // 1. 如果正在拦截，切换任何目标状态前必须先停止拦截（保证前后端一致）
-      if (isIntercepting) {
-        await window.go?.gui?.App?.DisableInterception(sessionId)
-        setIntercepting(false)
-        setActiveConfigId(null)
-        toast({ title: '配置已禁用', description: '修改附着目标时，拦截已自动停止' })
+      // 1. 如果正在拦截或捕获，切换任何目标状态前必须先停止
+      if (isIntercepting || isTrafficCapturing) {
+        if (isIntercepting) {
+          await window.go?.gui?.App?.DisableInterception(sessionId)
+          setIntercepting(false)
+          setActiveConfigId(null)
+        }
+        if (isTrafficCapturing) {
+          await window.go?.gui?.App?.EnableTrafficCapture(sessionId, false)
+          setTrafficCapturing(false)
+        }
+        toast({ title: '已暂停活动', description: '修改附着目标时，拦截和捕获已自动停止' })
       }
 
       // 2. 如果点击的是当前已附着的目标 -> 执行“分离”
@@ -280,24 +293,47 @@ function App() {
     }
   }
 
+  // 切换全量流量捕获
+  const handleToggleTrafficCapture = async (enabled: boolean) => {
+    if (!sessionId) return
+    try {
+      const result = await window.go?.gui?.App?.EnableTrafficCapture(sessionId, enabled)
+      if (result?.success) {
+        setTrafficCapturing(enabled)
+        toast({ 
+          variant: enabled ? 'success' : 'default',
+          title: enabled ? '开启捕获' : '停止捕获',
+          description: enabled ? '现在将记录所有网络请求' : '已停止全量请求记录'
+        })
+      } else {
+        toast({ variant: 'destructive', title: '操作失败', description: result?.message })
+      }
+    } catch (e) {
+      toast({ variant: 'destructive', title: '操作错误', description: String(e) })
+    }
+  }
+
   // 监听 Wails 事件
   useEffect(() => {
     // @ts-ignore
     if (window.runtime?.EventsOn) {
       // @ts-ignore
-      const unsubscribe = window.runtime.EventsOn('intercept-event', (event: NetworkEvent) => {
+      const unsubscribeIntercept = window.runtime.EventsOn('intercept-event', (event: NetworkEvent) => {
         console.log('[Events] 收到拦截事件:', event)
-        // 事件由 store 处理，自动分发到匹配/未匹配列表
         addInterceptEvent(event)
       })
-      console.log('[Events] 已订阅 intercept-event 事件')
+
+      // @ts-ignore
+      const unsubscribeTraffic = window.runtime.EventsOn('traffic-event', (event: NetworkEvent) => {
+        console.log('[Events] 收到流量事件:', event)
+        addTrafficEvent(event)
+      })
       
-      // 清理函数：在组件卸载或依赖变化时取消订阅
+      console.log('[Events] 已订阅后端事件推送')
+      
       return () => {
-        console.log('[Events] 取消订阅 intercept-event 事件')
-        if (unsubscribe) {
-          unsubscribe()
-        }
+        if (unsubscribeIntercept) unsubscribeIntercept()
+        if (unsubscribeTraffic) unsubscribeTraffic()
       }
     }
   }, [])
@@ -378,6 +414,10 @@ function App() {
                 <Activity className="w-4 h-4" />
                 Events
               </TabsTrigger>
+              <TabsTrigger value="network" className="gap-2">
+                <Activity className="w-4 h-4" />
+                Network
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -412,9 +452,22 @@ function App() {
               />
             </div>
           </TabsContent>
+
+          {/* 网络面板 */}
+          <TabsContent value="network" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
+            <div className="h-full overflow-auto p-4">
+              <NetworkPanel 
+                events={trafficEvents}
+                isCapturing={isTrafficCapturing}
+                onToggleCapture={handleToggleTrafficCapture}
+                onClear={clearTrafficEvents}
+                isConnected={isConnected}
+              />
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
-
+      
       {/* 底部状态栏 */}
       <div className="h-6 border-t px-4 flex items-center text-xs text-muted-foreground shrink-0">
         <span>cdpnetool v{appVersion}</span>

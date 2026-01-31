@@ -136,7 +136,7 @@ func (h *Handler) HandleRequest(
 		}
 		// 生成审计快照并发送
 		reqInfo := exec.CaptureRequestSnapshot()
-		h.sendMatchedEvent(targetID, "blocked", ruleMatches, reqInfo, domain.ResponseInfo{})
+		h.sendMatchedEvent(string(ev.RequestID), targetID, "blocked", ruleMatches, reqInfo, domain.ResponseInfo{})
 		l.Debug("请求被拦截阻止", "duration", time.Since(start))
 		return
 	}
@@ -159,7 +159,7 @@ func (h *Handler) HandleRequest(
 		if res.IsModified {
 			result = "modified"
 		}
-		h.sendMatchedEvent(targetID, result, ruleMatches, reqInfo, domain.ResponseInfo{})
+		h.sendMatchedEvent(string(ev.RequestID), targetID, result, ruleMatches, reqInfo, domain.ResponseInfo{})
 		return
 	}
 
@@ -254,11 +254,12 @@ func (h *Handler) HandleResponse(
 
 	reqInfo := pending.RequestInfo
 	resInfo := exec.CaptureResponseSnapshot(finalBody)
-	h.sendMatchedEvent(targetID, finalResult, pending.MatchedRules, reqInfo, resInfo)
+	h.sendMatchedEvent(string(ev.RequestID), targetID, finalResult, pending.MatchedRules, reqInfo, resInfo)
 }
 
 // sendMatchedEvent 统一发送网络事件
 func (h *Handler) sendMatchedEvent(
+	requestID string,
 	targetID domain.TargetID,
 	finalResult string,
 	matchedRules []domain.RuleMatch,
@@ -270,6 +271,7 @@ func (h *Handler) sendMatchedEvent(
 	}
 
 	evt := domain.NetworkEvent{
+		ID:           requestID,
 		Session:      "", // 会在上层填充
 		Target:       targetID,
 		Timestamp:    time.Now().UnixMilli(),

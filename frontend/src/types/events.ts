@@ -29,6 +29,7 @@ export interface RuleMatch {
 
 // 网络事件（通用结构）
 export interface NetworkEvent {
+  id: string
   session: string
   target: string
   timestamp: number

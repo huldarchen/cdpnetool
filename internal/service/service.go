@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cdpnetool/internal/handler"
+	"cdpnetool/internal/inspector"
 	"cdpnetool/internal/interceptor"
 	"cdpnetool/internal/logger"
 	"cdpnetool/internal/manager"
@@ -28,16 +29,18 @@ type svc struct {
 }
 
 type session struct {
-	id     domain.SessionID
-	cfg    domain.SessionConfig
-	config *rulespec.Config
-	events chan domain.NetworkEvent
-	ctx    context.Context    // Session 级上下文
-	cancel context.CancelFunc // 用于手动停止 Session
+	id      domain.SessionID
+	cfg     domain.SessionConfig
+	config  *rulespec.Config
+	events  chan domain.NetworkEvent
+	traffic chan domain.NetworkEvent
+	ctx     context.Context    // Session 级上下文
+	cancel  context.CancelFunc // 用于手动停止 Session
 
 	mgr      *manager.Manager
 	intr     *interceptor.Interceptor
 	h        *handler.Handler
+	ins      *inspector.Inspector
 	engine   *rules.Engine
 	workPool *pool.Pool
 }
@@ -70,6 +73,7 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 
 	id := domain.SessionID(uuid.New().String())
 	events := make(chan domain.NetworkEvent, cfg.PendingCapacity)
+	traffic := make(chan domain.NetworkEvent, cfg.PendingCapacity)
 
 	// 从传入的 ctx (App 级) 派生 Session 级 Context
 	sessionCtx, sessionCancel := context.WithCancel(ctx)
@@ -82,6 +86,11 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 		ProcessTimeoutMS:  cfg.ProcessTimeoutMS,
 		BodySizeThreshold: cfg.BodySizeThreshold,
 		Logger:            s.log,
+	})
+
+	ins := inspector.New(inspector.Config{
+		Events: traffic,
+		Logger: s.log,
 	})
 
 	// 拦截器回调
@@ -107,7 +116,16 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 			targetID = mgr.GetTargetIDByClient(client)
 		}
 
-		// 3. 根据阶段分发处理
+		// 3. 流量观察 (Inspector) - 旁路处理
+		if ins != nil && ins.IsEnabled() {
+			if ev.ResponseStatusCode == nil {
+				ins.RecordRequest(targetID, ev)
+			} else {
+				ins.RecordResponse(client, ctx, targetID, ev)
+			}
+		}
+
+		// 4. 规则处理 (Handler) - 负责决策和 Continue
 		if ev.ResponseStatusCode == nil {
 			h.HandleRequest(ctx, targetID, client, ev, l, traceID)
 		} else {
@@ -128,11 +146,13 @@ func (s *svc) StartSession(ctx context.Context, cfg domain.SessionConfig) (domai
 		cfg:      cfg,
 		config:   nil,
 		events:   events,
+		traffic:  traffic,
 		ctx:      sessionCtx,
 		cancel:   sessionCancel,
 		mgr:      mgr,
 		intr:     intr,
 		h:        h,
+		ins:      ins,
 		engine:   nil,
 		workPool: workPool,
 	}
@@ -189,6 +209,7 @@ func (s *svc) StopSession(ctx context.Context, id domain.SessionID) error {
 		}
 	}
 	close(ses.events)
+	close(ses.traffic)
 	s.log.Info("会话已停止", "session", string(id))
 	return nil
 }
@@ -214,8 +235,8 @@ func (s *svc) AttachTarget(ctx context.Context, id domain.SessionID, target doma
 		return err
 	}
 
-	// 如果已启用拦截，对新目标立即启用
-	if ses.intr != nil && ses.intr.IsEnabled() {
+	// 如果已启用拦截或全量捕获，对新目标立即启用物理拦截
+	if s.isCDPRequired(ses) {
 		if err := ses.intr.EnableTarget(ms.Client, ctx); err != nil {
 			s.log.Err(err, "为新附加目标启用拦截失败", "session", string(id), "target", string(target))
 		}
@@ -376,4 +397,52 @@ func (s *svc) SubscribeEvents(ctx context.Context, id domain.SessionID) (<-chan 
 		return nil, domain.ErrSessionNotFound
 	}
 	return ses.events, nil
+}
+
+// SubscribeTraffic 订阅全量流量流
+func (s *svc) SubscribeTraffic(ctx context.Context, id domain.SessionID) (<-chan domain.NetworkEvent, error) {
+	s.mu.Lock()
+	ses, ok := s.sessions[id]
+	s.mu.Unlock()
+	if !ok {
+		return nil, domain.ErrSessionNotFound
+	}
+	return ses.traffic, nil
+}
+
+// EnableTrafficCapture 启用/禁用流量捕获
+func (s *svc) EnableTrafficCapture(ctx context.Context, id domain.SessionID, enabled bool) error {
+	s.mu.Lock()
+	ses, ok := s.sessions[id]
+	s.mu.Unlock()
+	if !ok {
+		return domain.ErrSessionNotFound
+	}
+
+	if ses.ins != nil {
+		ses.ins.SetEnabled(enabled)
+	}
+
+	// 如果开启了捕获，且当前有附加目标，确保物理拦截已启用
+	if enabled && s.isCDPRequired(ses) {
+		for _, ms := range ses.mgr.GetAttachedTargets() {
+			if err := ses.intr.EnableTarget(ms.Client, ctx); err != nil {
+				s.log.Err(err, "启用全量捕获时激活目标失败", "target", string(ms.ID))
+			}
+		}
+	}
+
+	s.log.Info("更新流量捕获状态", "session", string(id), "enabled", enabled)
+	return nil
+}
+
+// isCDPRequired 判断是否需要物理开启 CDP 拦截 (拦截或捕获任一开启即可)
+func (s *svc) isCDPRequired(ses *session) bool {
+	if ses.intr != nil && ses.intr.IsEnabled() {
+		return true
+	}
+	if ses.ins != nil && ses.ins.IsEnabled() {
+		return true
+	}
+	return false
 }

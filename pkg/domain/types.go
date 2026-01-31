@@ -66,6 +66,7 @@ type RuleMatch struct {
 
 // NetworkEvent 网络请求事件（统一所有拦截事件）
 type NetworkEvent struct {
+	ID           string       `json:"id"` // 事务唯一ID (CDP RequestID)
 	Session      SessionID    `json:"session"`
 	Target       TargetID     `json:"target"`
 	Timestamp    int64        `json:"timestamp"`

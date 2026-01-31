@@ -24,12 +24,15 @@ interface SessionState {
   targets: TargetInfo[]
   attachedTargetId: string | null
   matchedEvents: MatchedEventWithId[]    // 匹配的事件（会存入数据库）
+  isTrafficCapturing: boolean           // 是否正在捕获全量流量
+  trafficEvents: NetworkEvent[]         // 全量流量列表（仅内存，最近100条）
   
   // Actions
   setDevToolsURL: (url: string) => void
   setCurrentSession: (id: string | null) => void
   setConnected: (connected: boolean) => void
   setIntercepting: (intercepting: boolean) => void
+  setTrafficCapturing: (capturing: boolean) => void
   setActiveConfigId: (id: number | null) => void
   setTargets: (targets: TargetInfo[]) => void
   setAttachedTargetId: (targetId: string | null) => void
@@ -37,7 +40,9 @@ interface SessionState {
   
   // 事件操作
   addInterceptEvent: (event: NetworkEvent) => void
+  addTrafficEvent: (event: NetworkEvent) => void
   clearMatchedEvents: () => void
+  clearTrafficEvents: () => void
   clearAllEvents: () => void
 }
 
@@ -55,11 +60,14 @@ export const useSessionStore = create<SessionState>((set) => ({
   targets: [],
   attachedTargetId: null,
   matchedEvents: [],
+  isTrafficCapturing: false,
+  trafficEvents: [],
   
   setDevToolsURL: (url) => set({ devToolsURL: url }),
   setCurrentSession: (id) => set({ currentSessionId: id }),
   setConnected: (connected) => set({ isConnected: connected }),
   setIntercepting: (intercepting) => set({ isIntercepting: intercepting }),
+  setTrafficCapturing: (capturing) => set({ isTrafficCapturing: capturing }),
   setActiveConfigId: (id) => set({ activeConfigId: id }),
   setTargets: (targets) => set({ targets }),
   setAttachedTargetId: (targetId) => set({ attachedTargetId: targetId }),
@@ -68,7 +76,9 @@ export const useSessionStore = create<SessionState>((set) => ({
     attachedTargetId: null,
     activeConfigId: null,
     isIntercepting: false,
+    isTrafficCapturing: false,
     targets: [],
+    trafficEvents: [],
   }),
   
   // 添加事件
@@ -87,9 +97,24 @@ export const useSessionStore = create<SessionState>((set) => ({
     }
     return state
   }),
+
+  // 添加全量流量事件 (Upsert 逻辑)
+  addTrafficEvent: (event) => set((state) => {
+    const existingIndex = state.trafficEvents.findIndex(e => e.id === event.id)
+    if (existingIndex > -1) {
+      const newList = [...state.trafficEvents]
+      // 合并数据：响应阶段会补全 response 和 finalResult
+      newList[existingIndex] = { ...newList[existingIndex], ...event }
+      return { trafficEvents: newList }
+    } else {
+      // 新请求，限制 100 条
+      return { trafficEvents: [event, ...state.trafficEvents].slice(0, 100) }
+    }
+  }),
   
   clearMatchedEvents: () => set({ matchedEvents: [] }),
-  clearAllEvents: () => set({ matchedEvents: [] }),
+  clearTrafficEvents: () => set({ trafficEvents: [] }),
+  clearAllEvents: () => set({ matchedEvents: [], trafficEvents: [] }),
 }))
 
 // 主题状态

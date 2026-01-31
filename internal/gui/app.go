@@ -36,6 +36,7 @@ type App struct {
 	eventRepo       *repo.EventRepo
 	isDirty         bool
 	cancelSubscribe context.CancelFunc
+	cancelTraffic   context.CancelFunc
 }
 
 // NewApp 创建并返回一个新的 App 实例。
@@ -92,6 +93,9 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.cancelSubscribe != nil {
 		a.cancelSubscribe()
 	}
+	if a.cancelTraffic != nil {
+		a.cancelTraffic()
+	}
 
 	if a.currentSession != "" {
 		_ = a.service.StopSession(ctx, a.currentSession)
@@ -123,6 +127,10 @@ func (a *App) StartSession(devToolsURL string) api.Response[SessionData] {
 		a.cancelSubscribe()
 		a.cancelSubscribe = nil
 	}
+	if a.cancelTraffic != nil {
+		a.cancelTraffic()
+		a.cancelTraffic = nil
+	}
 
 	cfg := domain.SessionConfig{DevToolsURL: devToolsURL}
 	sid, err := a.service.StartSession(a.ctx, cfg)
@@ -134,9 +142,14 @@ func (a *App) StartSession(devToolsURL string) api.Response[SessionData] {
 	a.currentSession = sid
 
 	// 启动事件订阅
-	ctx, cancel := context.WithCancel(a.ctx)
-	a.cancelSubscribe = cancel
-	go a.subscribeEvents(ctx, sid)
+	subCtx, subCancel := context.WithCancel(a.ctx)
+	a.cancelSubscribe = subCancel
+	go a.subscribeEvents(subCtx, sid)
+
+	// 启动全量流量订阅
+	trafficCtx, trafficCancel := context.WithCancel(a.ctx)
+	a.cancelTraffic = trafficCancel
+	go a.subscribeTraffic(trafficCtx, sid)
 
 	a.log.Info("会话启动成功", "sessionID", sid)
 	return api.OK(SessionData{SessionID: string(sid)})
@@ -150,6 +163,10 @@ func (a *App) StopSession(sessionID string) api.Response[api.EmptyData] {
 	if a.cancelSubscribe != nil {
 		a.cancelSubscribe()
 		a.cancelSubscribe = nil
+	}
+	if a.cancelTraffic != nil {
+		a.cancelTraffic()
+		a.cancelTraffic = nil
 	}
 
 	err := a.service.StopSession(a.ctx, domain.SessionID(sessionID))
@@ -303,6 +320,16 @@ func (a *App) LoadRules(sessionID string, rulesJSON string) api.Response[api.Emp
 	return api.OK(api.EmptyData{})
 }
 
+// EnableTrafficCapture 启用或禁用全量流量捕获。
+func (a *App) EnableTrafficCapture(sessionID string, enabled bool) api.Response[api.EmptyData] {
+	err := a.service.EnableTrafficCapture(a.ctx, domain.SessionID(sessionID), enabled)
+	if err != nil {
+		code, msg := a.translateError(err)
+		return api.Fail[api.EmptyData](code, msg)
+	}
+	return api.OK(api.EmptyData{})
+}
+
 // GetRuleStats 获取指定会话的规则命中统计信息。
 func (a *App) GetRuleStats(sessionID string) api.Response[StatsData] {
 	stats, err := a.service.GetRuleStats(a.ctx, domain.SessionID(sessionID))
@@ -344,6 +371,32 @@ func (a *App) subscribeEvents(ctx context.Context, sessionID domain.SessionID) {
 
 		case <-ctx.Done():
 			a.log.Debug("事件订阅被取消", "sessionID", sessionID)
+			return
+		}
+	}
+}
+
+// subscribeTraffic 订阅全量流量事件并通过 Wails 事件系统推送到前端。
+func (a *App) subscribeTraffic(ctx context.Context, sessionID domain.SessionID) {
+	ch, err := a.service.SubscribeTraffic(ctx, sessionID)
+	if err != nil {
+		a.log.Err(err, "订阅流量事件失败", "sessionID", sessionID)
+		return
+	}
+
+	a.log.Debug("开始订阅全量流量事件", "sessionID", sessionID)
+	for {
+		select {
+		case evt, ok := <-ch:
+			if !ok {
+				a.log.Debug("流量事件通道已关闭", "sessionID", sessionID)
+				return
+			}
+			evt.Session = sessionID
+			runtime.EventsEmit(a.ctx, "traffic-event", evt)
+
+		case <-ctx.Done():
+			a.log.Debug("流量订阅被取消", "sessionID", sessionID)
 			return
 		}
 	}

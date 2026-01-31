@@ -40,6 +40,12 @@ type Service interface {
 
 	// SubscribeEvents 订阅事件
 	SubscribeEvents(ctx context.Context, id domain.SessionID) (<-chan domain.NetworkEvent, error)
+
+	// SubscribeTraffic 订阅全量流量流
+	SubscribeTraffic(ctx context.Context, id domain.SessionID) (<-chan domain.NetworkEvent, error)
+
+	// EnableTrafficCapture 启用/禁用流量捕获
+	EnableTrafficCapture(ctx context.Context, id domain.SessionID, enabled bool) error
 }
 
 // NewService 创建并返回服务接口实现

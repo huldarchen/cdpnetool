@@ -18,6 +18,8 @@ export function DisableInterception(arg1:string):Promise<api.Response_cdpnetool_
 
 export function EnableInterception(arg1:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
+export function EnableTrafficCapture(arg1:string,arg2:boolean):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
+
 export function ExportConfig(arg1:string,arg2:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
 export function GenerateNewRule(arg1:string,arg2:number):Promise<api.Response_cdpnetool_internal_gui_NewRuleData_>;

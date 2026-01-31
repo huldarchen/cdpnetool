@@ -34,6 +34,10 @@ export function EnableInterception(arg1) {
   return window['go']['gui']['App']['EnableInterception'](arg1);
 }
 
+export function EnableTrafficCapture(arg1, arg2) {
+  return window['go']['gui']['App']['EnableTrafficCapture'](arg1, arg2);
+}
+
 export function ExportConfig(arg1, arg2) {
   return window['go']['gui']['App']['ExportConfig'](arg1, arg2);
 }

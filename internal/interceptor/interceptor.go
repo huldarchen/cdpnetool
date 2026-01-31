@@ -19,6 +19,9 @@ type Interceptor struct {
 	pool    *pool.Pool
 	handler HandlerFunc
 	log     logger.Logger
+
+	// 已激活的客户端映射: map[*cdp.Client]bool
+	activeClients sync.Map
 }
 
 // HandlerFunc 事件处理函数类型
@@ -42,8 +45,14 @@ func (i *Interceptor) EnableTarget(client *cdp.Client, ctx context.Context) erro
 		return nil
 	}
 
+	// 检查是否已经为该客户端启用了拦截，防止重复启用和重复 consume
+	if _, loaded := i.activeClients.LoadOrStore(client, true); loaded {
+		return nil
+	}
+
 	// 启用 Network
 	if err := client.Network.Enable(ctx, nil); err != nil {
+		i.activeClients.Delete(client)
 		return err
 	}
 
@@ -73,6 +82,7 @@ func (i *Interceptor) DisableTarget(client *cdp.Client, ctx context.Context) err
 	if client == nil {
 		return nil
 	}
+	i.activeClients.Delete(client)
 	return client.Fetch.Disable(ctx)
 }
 
