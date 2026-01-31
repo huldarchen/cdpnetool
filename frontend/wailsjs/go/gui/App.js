@@ -70,6 +70,10 @@ export function GetSetting(arg1) {
   return window['go']['gui']['App']['GetSetting'](arg1);
 }
 
+export function GetVersion() {
+  return window['go']['gui']['App']['GetVersion']();
+}
+
 export function ImportConfig(arg1) {
   return window['go']['gui']['App']['ImportConfig'](arg1);
 }
@@ -132,8 +136,4 @@ export function StartSession(arg1) {
 
 export function StopSession(arg1) {
   return window['go']['gui']['App']['StopSession'](arg1);
-}
-
-export function TranslateError(arg1) {
-  return window['go']['gui']['App']['TranslateError'](arg1);
 }
