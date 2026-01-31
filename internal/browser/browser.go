@@ -34,10 +34,10 @@ type Browser struct {
 func Start(ctx context.Context, opts Options) (*Browser, error) {
 	exe := opts.ExecPath
 	if exe == "" {
-		exe = defaultChromePath()
+		exe = findExecutable()
 	}
 	if exe == "" {
-		return nil, errors.New("chrome executable not found")
+		return nil, errors.New("browser executable not found (chrome/edge/chromium)")
 	}
 
 	port := opts.RemoteDebuggingPort
@@ -93,42 +93,47 @@ func (b *Browser) Stop(timeout time.Duration) error {
 	}
 }
 
-// defaultChromePath 返回常见的 Chrome 可执行路径（跨平台）
-func defaultChromePath() string {
-	candidates := getChromePaths()
+// findExecutable 查找可用的浏览器执行路径（Chrome/Edge/Chromium）
+func findExecutable() string {
+	candidates := getBrowserPaths()
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}
 	}
-
-	for _, name := range []string{"chrome", "google-chrome", "chromium", "chromium-browser"} {
-		if p, err := exec.LookPath(name); err == nil {
-			return p
-		}
-	}
-
 	return ""
 }
 
-// getChromePaths 根据操作系统返回可能的 Chrome 路径
-func getChromePaths() []string {
+// getBrowserPaths 返回各平台下 Chrome、Edge 和 Chromium 的默认安装路径
+func getBrowserPaths() []string {
 	switch runtime.GOOS {
 	case "windows":
 		return []string{
+			// Chrome
 			filepath.Join(os.Getenv("ProgramFiles"), "Google", "Chrome", "Application", "chrome.exe"),
 			filepath.Join(os.Getenv("ProgramFiles(x86)"), "Google", "Chrome", "Application", "chrome.exe"),
 			filepath.Join(os.Getenv("LOCALAPPDATA"), "Google", "Chrome", "Application", "chrome.exe"),
+			// Edge
+			filepath.Join(os.Getenv("ProgramFiles(x86)"), "Microsoft", "Edge", "Application", "msedge.exe"),
+			filepath.Join(os.Getenv("ProgramFiles"), "Microsoft", "Edge", "Application", "msedge.exe"),
+			// Chromium
+			filepath.Join(os.Getenv("ProgramFiles"), "Chromium", "Application", "chrome.exe"),
+			filepath.Join(os.Getenv("ProgramFiles(x86)"), "Chromium", "Application", "chrome.exe"),
+			filepath.Join(os.Getenv("LOCALAPPDATA"), "Chromium", "Application", "chrome.exe"),
 		}
 	case "darwin":
 		return []string{
 			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 			filepath.Join(os.Getenv("HOME"), "Applications", "Google Chrome.app", "Contents", "MacOS", "Google Chrome"),
+			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+			"/Applications/Chromium.app/Contents/MacOS/Chromium",
 		}
 	case "linux":
 		return []string{
 			"/usr/bin/google-chrome",
 			"/usr/bin/google-chrome-stable",
+			"/usr/bin/microsoft-edge",
+			"/usr/bin/microsoft-edge-stable",
 			"/usr/bin/chromium",
 			"/usr/bin/chromium-browser",
 			"/snap/bin/chromium",
@@ -165,20 +170,6 @@ func buildLaunchArgs(port int, opts Options) []string {
 		fmt.Sprintf("--remote-debugging-port=%d", port),
 		"--no-first-run",
 		"--no-default-browser-check",
-		"--disable-background-networking",
-		"--disable-background-timer-throttling",
-		"--disable-backgrounding-occluded-windows",
-		"--disable-breakpad",
-		"--disable-client-side-phishing-detection",
-		"--disable-default-apps",
-		"--disable-extensions",
-		"--disable-hang-monitor",
-		"--disable-prompt-on-repost",
-		"--disable-renderer-backgrounding",
-		"--disable-sync",
-		"--disable-translate",
-		"--metrics-recording-only",
-		"--safebrowsing-disable-auto-update",
 	}
 
 	// Linux 环境下添加额外参数
@@ -190,11 +181,6 @@ func buildLaunchArgs(port int, opts Options) []string {
 	if opts.UserDataDir != "" {
 		_ = os.MkdirAll(opts.UserDataDir, 0o755)
 		args = append(args, fmt.Sprintf("--user-data-dir=%s", opts.UserDataDir))
-	} else {
-		// 使用带时间戳的临时目录，避免冲突
-		dir := filepath.Join(os.TempDir(), fmt.Sprintf("cdpnetool-chrome-%d", time.Now().Unix()))
-		_ = os.MkdirAll(dir, 0o755)
-		args = append(args, fmt.Sprintf("--user-data-dir=%s", dir))
 	}
 
 	// 无头模式
