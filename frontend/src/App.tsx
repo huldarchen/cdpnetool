@@ -79,6 +79,7 @@ declare global {
           ImportConfig: (json: string) => Promise<ApiResponse<{ config: ConfigRecord }>>
           CreateNewConfig: (name: string) => Promise<ApiResponse<{ config: ConfigRecord; configJson: string }>>
           GenerateNewRule: (name: string, existingCount: number) => Promise<ApiResponse<{ ruleJson: string }>>
+          GetVersion: () => Promise<ApiResponse<{ version: string }>>
         }
       }
     }
@@ -112,6 +113,22 @@ function App() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [isLaunchingBrowser, setIsLaunchingBrowser] = useState(false)
+  const [appVersion, setAppVersion] = useState('')
+
+  // 获取版本号
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        const result = await window.go?.gui?.App?.GetVersion()
+        if (result?.success && result.data) {
+          setAppVersion(result.data.version)
+        }
+      } catch (e) {
+        console.error('获取版本号失败:', e)
+      }
+    }
+    fetchVersion()
+  }, [])
 
   // 启动浏览器
   const handleLaunchBrowser = async () => {
@@ -405,7 +422,7 @@ function App() {
 
       {/* 底部状态栏 */}
       <div className="h-6 border-t px-4 flex items-center text-xs text-muted-foreground shrink-0">
-        <span>cdpnetool v1.1.1</span>
+        <span>cdpnetool v{appVersion}</span>
         <span className="mx-2">|</span>
         <span>Session: {sessionId?.slice(0, 8) || '-'}</span>
       </div>

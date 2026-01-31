@@ -70,6 +70,10 @@ export function GetSetting(arg1) {
   return window['go']['gui']['App']['GetSetting'](arg1);
 }
 
+export function GetVersion() {
+  return window['go']['gui']['App']['GetVersion']();
+}
+
 export function ImportConfig(arg1) {
   return window['go']['gui']['App']['ImportConfig'](arg1);
 }

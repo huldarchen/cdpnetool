@@ -36,6 +36,8 @@ export function GetRuleStats(arg1:string):Promise<api.Response_cdpnetool_interna
 
 export function GetSetting(arg1:string):Promise<api.Response_cdpnetool_internal_gui_SettingData_>;
 
+export function GetVersion():Promise<api.Response_cdpnetool_internal_gui_VersionData_>;
+
 export function ImportConfig(arg1:string):Promise<api.Response_cdpnetool_internal_gui_ConfigData_>;
 
 export function LaunchBrowser(arg1:boolean):Promise<api.Response_cdpnetool_internal_gui_BrowserData_>;

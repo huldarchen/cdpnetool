@@ -61,3 +61,8 @@ type EventHistoryData struct {
 	Events []model.NetworkEventRecord `json:"events"`
 	Total  int64                      `json:"total"`
 }
+
+// VersionData 版本数据
+type VersionData struct {
+	Version string `json:"version"`
+}

@@ -666,3 +666,8 @@ func (a *App) CleanupEventHistory(retentionDays int) api.Response[api.EmptyData]
 	a.log.Info("已清理旧事件", "retentionDays", retentionDays, "deletedCount", deleted)
 	return api.OK(api.EmptyData{})
 }
+
+// GetVersion 获取应用版本号
+func (a *App) GetVersion() api.Response[VersionData] {
+	return api.OK(VersionData{Version: a.cfg.Version})
+}
