@@ -69,7 +69,7 @@ func TestEngine_Conditions(t *testing.T) {
 			}
 
 			engine := rules.New(config)
-			matched := engine.EvalForStage(tt.ctx, config.Rules[0].Stage)
+			matched := engine.Eval(tt.ctx)
 
 			if tt.wantMatch && len(matched) == 0 {
 				t.Errorf("期望匹配但未匹配成功")
@@ -117,7 +117,7 @@ func TestEngine_ComplexLogic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			matched := engine.EvalForStage(tt.ctx, rulespec.StageRequest)
+			matched := engine.Eval(tt.ctx)
 			if (len(matched) > 0) != tt.wantMatch {
 				t.Errorf("匹配结果期望 %v, 实际 %v", tt.wantMatch, len(matched) > 0)
 			}
@@ -136,7 +136,8 @@ func TestEngine_PriorityAndStats(t *testing.T) {
 	engine := rules.New(config)
 
 	// 1. 验证优先级排序
-	matched := engine.EvalForStage(&rules.EvalContext{URL: "/a"}, rulespec.StageRequest)
+	matched := engine.Eval(&rules.EvalContext{URL: "/a"})
+	engine.RecordStats(matched)
 	if len(matched) != 2 || matched[0].Rule.ID != "high" {
 		t.Errorf("优先级排序错误: 第一位应该是 high, 实际是 %s", matched[0].Rule.ID)
 	}

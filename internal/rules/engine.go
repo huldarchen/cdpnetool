@@ -109,18 +109,6 @@ func (e *Engine) RecordStats(matched []*MatchedRule) {
 	}
 }
 
-// EvalForStage 已废弃，仅为兼容性保留，内部调用 Eval
-func (e *Engine) EvalForStage(ctx *EvalContext, stage rulespec.Stage) []*MatchedRule {
-	all := e.Eval(ctx)
-	var filtered []*MatchedRule
-	for _, m := range all {
-		if m.Rule.Stage == stage {
-			filtered = append(filtered, m)
-		}
-	}
-	return filtered
-}
-
 // matchRule 评估匹配规则
 func (e *Engine) matchRule(ctx *EvalContext, m *rulespec.Match) bool {
 	// allOf: 所有条件都必须满足
