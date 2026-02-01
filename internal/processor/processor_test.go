@@ -23,9 +23,11 @@ func TestNew(t *testing.T) {
 	eng := engine.New(cfg)
 
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
+	trafficChan := make(chan domain.NetworkEvent, 10)
+	matchedAud := audit.New(events, logger.NewNop())
+	trafficAud := audit.New(trafficChan, logger.NewNop())
 
-	p := processor.New(tr, eng, aud, logger.NewNop())
+	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 	if p == nil {
 		t.Error("New() returned nil")
 	}
@@ -39,8 +41,10 @@ func TestProcessRequest_NoMatch(t *testing.T) {
 	eng := engine.New(cfg)
 
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
-	p := processor.New(tr, eng, aud, logger.NewNop())
+	trafficChan := make(chan domain.NetworkEvent, 10)
+	matchedAud := audit.New(events, logger.NewNop())
+	trafficAud := audit.New(trafficChan, logger.NewNop())
+	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	req := &traffic.Request{
 		ID:     "req1",
@@ -62,8 +66,10 @@ func TestProcessRequest_Block(t *testing.T) {
 	eng := engine.New(cfg)
 
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
-	p := processor.New(tr, eng, aud, logger.NewNop())
+	trafficChan := make(chan domain.NetworkEvent, 10)
+	matchedAud := audit.New(events, logger.NewNop())
+	trafficAud := audit.New(trafficChan, logger.NewNop())
+	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	// 添加拦截规则
 	rule := rulespec.Rule{
@@ -109,8 +115,10 @@ func TestProcessRequest_ModifyHeader(t *testing.T) {
 	eng := engine.New(cfg)
 
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
-	p := processor.New(tr, eng, aud, logger.NewNop())
+	trafficChan := make(chan domain.NetworkEvent, 10)
+	matchedAud := audit.New(events, logger.NewNop())
+	trafficAud := audit.New(trafficChan, logger.NewNop())
+	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	rule := rulespec.Rule{
 		ID:      "rule1",
@@ -156,8 +164,10 @@ func TestProcessRequest_ModifyURL(t *testing.T) {
 	eng := engine.New(cfg)
 
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
-	p := processor.New(tr, eng, aud, logger.NewNop())
+	trafficChan := make(chan domain.NetworkEvent, 10)
+	matchedAud := audit.New(events, logger.NewNop())
+	trafficAud := audit.New(trafficChan, logger.NewNop())
+	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	rule := rulespec.Rule{
 		ID:      "rule1",
@@ -199,8 +209,10 @@ func TestProcessResponse_NoMatch(t *testing.T) {
 	eng := engine.New(cfg)
 
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
-	p := processor.New(tr, eng, aud, logger.NewNop())
+	trafficChan := make(chan domain.NetworkEvent, 10)
+	matchedAud := audit.New(events, logger.NewNop())
+	trafficAud := audit.New(trafficChan, logger.NewNop())
+	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	result := p.ProcessResponse(context.Background(), "req1", &traffic.Response{})
 	if result.Action != processor.ActionPass {
@@ -216,8 +228,10 @@ func TestProcessResponse_ModifyStatus(t *testing.T) {
 	eng := engine.New(cfg)
 
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
-	p := processor.New(tr, eng, aud, logger.NewNop())
+	trafficChan := make(chan domain.NetworkEvent, 10)
+	matchedAud := audit.New(events, logger.NewNop())
+	trafficAud := audit.New(trafficChan, logger.NewNop())
+	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	rule := rulespec.Rule{
 		ID:      "rule1",
@@ -271,8 +285,10 @@ func TestProcessResponse_ModifyHeader(t *testing.T) {
 	eng := engine.New(cfg)
 
 	events := make(chan domain.NetworkEvent, 10)
-	aud := audit.New(events, logger.NewNop())
-	p := processor.New(tr, eng, aud, logger.NewNop())
+	trafficChan := make(chan domain.NetworkEvent, 10)
+	matchedAud := audit.New(events, logger.NewNop())
+	trafficAud := audit.New(trafficChan, logger.NewNop())
+	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
 	rule := rulespec.Rule{
 		ID:      "rule1",

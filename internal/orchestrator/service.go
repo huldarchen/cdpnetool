@@ -30,7 +30,8 @@ type sessionState struct {
 	interceptor         *cdp.Interceptor
 	engine              *engine.Engine
 	tracker             *tracker.Tracker
-	auditor             *audit.Auditor
+	matchedAuditor      *audit.Auditor
+	trafficAuditor      *audit.Auditor
 	processor           *processor.Processor
 	events              chan domain.NetworkEvent
 	trafficEvs          chan domain.NetworkEvent
@@ -77,9 +78,10 @@ func (o *Orchestrator) StartSession(ctx context.Context, cfg domain.SessionConfi
 
 	// 初始化各层组件
 	eng := engine.New(&rulespec.Config{})
-	aud := audit.New(events, o.log)
+	matchedAud := audit.New(events, o.log)
+	trafficAud := audit.New(trafficChan, o.log)
 	trk := tracker.New(time.Duration(cfg.ProcessTimeoutMS)*time.Millisecond, o.log)
-	proc := processor.New(trk, eng, aud, o.log)
+	proc := processor.New(trk, eng, matchedAud, trafficAud, o.log)
 
 	clientMgr := cdp.NewClientManager(cfg.DevToolsURL, o.log)
 	intr := cdp.NewInterceptor(o.log, workPool)
@@ -87,20 +89,21 @@ func (o *Orchestrator) StartSession(ctx context.Context, cfg domain.SessionConfi
 	sess := session.New(id)
 
 	state := &sessionState{
-		id:          id,
-		cfg:         cfg,
-		sess:        sess,
-		clientMgr:   clientMgr,
-		interceptor: intr,
-		engine:      eng,
-		tracker:     trk,
-		auditor:     aud,
-		processor:   proc,
-		events:      events,
-		trafficEvs:  trafficChan,
-		workPool:    workPool,
-		ctx:         sessionCtx,
-		cancel:      cancel,
+		id:             id,
+		cfg:            cfg,
+		sess:           sess,
+		clientMgr:      clientMgr,
+		interceptor:    intr,
+		engine:         eng,
+		tracker:        trk,
+		matchedAuditor: matchedAud,
+		trafficAuditor: trafficAud,
+		processor:      proc,
+		events:         events,
+		trafficEvs:     trafficChan,
+		workPool:       workPool,
+		ctx:            sessionCtx,
+		cancel:         cancel,
 	}
 
 	o.sessions[id] = state
@@ -309,7 +312,7 @@ func (o *Orchestrator) EnableTrafficCapture(ctx context.Context, id domain.Sessi
 	if !ok {
 		return domain.ErrSessionNotFound
 	}
-	state.auditor.SetEnabled(enabled)
+	state.trafficAuditor.SetEnabled(enabled)
 
 	// 如果开启了捕获，且当前有附着目标，确保物理拦截已启用
 	if !enabled {

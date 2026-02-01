@@ -38,24 +38,26 @@ type PendingState struct {
 
 // Processor 业务处理编排中心
 type Processor struct {
-	tracker   *tracker.Tracker
-	engine    *engine.Engine
-	auditor   *audit.Auditor
-	log       logger.Logger
-	sessionID string // 会话ID
-	targetID  string // 目标ID
+	tracker        *tracker.Tracker
+	engine         *engine.Engine
+	matchedAuditor *audit.Auditor // 匹配事件审计器
+	trafficAuditor *audit.Auditor // 全量流量审计器
+	log            logger.Logger
+	sessionID      string // 会话ID
+	targetID       string // 目标ID
 }
 
 // New 创建一个新的处理器
-func New(t *tracker.Tracker, e *engine.Engine, a *audit.Auditor, l logger.Logger) *Processor {
+func New(t *tracker.Tracker, e *engine.Engine, matchedAud, trafficAud *audit.Auditor, l logger.Logger) *Processor {
 	if l == nil {
 		l = logger.NewNop()
 	}
 	return &Processor{
-		tracker: t,
-		engine:  e,
-		auditor: a,
-		log:     l,
+		tracker:        t,
+		engine:         e,
+		matchedAuditor: matchedAud,
+		trafficAuditor: trafficAud,
+		log:            l,
 	}
 }
 
@@ -107,7 +109,13 @@ func (p *Processor) ProcessRequest(ctx context.Context, req *traffic.Request) Re
 					res.MockRes.Headers.Set(k, v)
 				}
 
-				p.auditor.Record(p.sessionID, p.targetID, req, res.MockRes, "blocked", p.toRuleMatches(matched))
+				// Block 动作需立即记录审计（响应阶段不会再执行）
+				// 1. 全量流量审计
+				p.trafficAuditor.Record(p.sessionID, p.targetID, req, res.MockRes, "blocked", p.toRuleMatches(matched))
+				// 2. 匹配事件审计（仅匹配时记录）
+				if len(matched) > 0 {
+					p.matchedAuditor.Record(p.sessionID, p.targetID, req, res.MockRes, "blocked", p.toRuleMatches(matched))
+				}
 				p.log.Debug("[Processor] Block 执行完成", "requestID", req.ID)
 				return res
 			}
@@ -173,7 +181,15 @@ func (p *Processor) ProcessResponse(ctx context.Context, reqID string, res *traf
 		}
 	}
 
-	p.auditor.Record(p.sessionID, p.targetID, state.Request, res, finalResult, p.toRuleMatches(append(state.MatchedRules, matched...)))
+	allMatched := append(state.MatchedRules, matched...)
+	ruleMatches := p.toRuleMatches(allMatched)
+
+	// 1. 全量流量审计
+	p.trafficAuditor.Record(p.sessionID, p.targetID, state.Request, res, finalResult, ruleMatches)
+	// 2. 匹配事件审计（仅匹配时记录）
+	if len(allMatched) > 0 {
+		p.matchedAuditor.Record(p.sessionID, p.targetID, state.Request, res, finalResult, ruleMatches)
+	}
 	p.log.Debug("[Processor] 响应处理完成", "requestID", reqID, "finalResult", finalResult)
 
 	if finalResult == "modified" {
