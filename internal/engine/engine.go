@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"cdpnetool/internal/regexutil"
+	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
-	"cdpnetool/pkg/traffic"
 
 	"github.com/tidwall/gjson"
 )
@@ -44,7 +44,7 @@ func (e *Engine) Update(config *rulespec.Config) {
 }
 
 // Eval 评估请求并返回匹配的规则列表 (按优先级降序)
-func (e *Engine) Eval(req *traffic.Request, stage rulespec.Stage) []*MatchedRule {
+func (e *Engine) Eval(req *domain.Request, stage rulespec.Stage) []*MatchedRule {
 	e.mu.RLock()
 	config := e.config
 	e.mu.RUnlock()
@@ -91,7 +91,7 @@ func (e *Engine) RecordStats(matched []*MatchedRule) {
 }
 
 // matchRule 评估单个规则的匹配条件
-func (e *Engine) matchRule(req *traffic.Request, m *rulespec.Match) bool {
+func (e *Engine) matchRule(req *domain.Request, m *rulespec.Match) bool {
 	// allOf: 必须全部满足
 	if len(m.AllOf) > 0 {
 		for i := range m.AllOf {
@@ -117,7 +117,7 @@ func (e *Engine) matchRule(req *traffic.Request, m *rulespec.Match) bool {
 }
 
 // evalCondition 评估单个条件
-func (e *Engine) evalCondition(req *traffic.Request, c *rulespec.Condition) bool {
+func (e *Engine) evalCondition(req *domain.Request, c *rulespec.Condition) bool {
 	switch c.Type {
 	case rulespec.ConditionURLEquals:
 		return req.URL == c.Value

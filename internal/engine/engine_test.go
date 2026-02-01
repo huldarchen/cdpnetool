@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"cdpnetool/internal/engine"
+	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
-	"cdpnetool/pkg/traffic"
 )
 
 func TestNew(t *testing.T) {
@@ -24,7 +24,7 @@ func TestUpdate(t *testing.T) {
 	eng.Update(cfg2)
 
 	// 验证更新后配置生效
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -37,7 +37,7 @@ func TestUpdate(t *testing.T) {
 
 func TestEval_NoConfig(t *testing.T) {
 	eng := engine.New(nil)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -65,7 +65,7 @@ func TestEval_NoMatch(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -93,7 +93,7 @@ func TestEval_URLContains(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com/path",
 		Method: "GET",
@@ -124,7 +124,7 @@ func TestEval_URLEquals(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -152,7 +152,7 @@ func TestEval_URLPrefix(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com/path",
 		Method: "GET",
@@ -180,7 +180,7 @@ func TestEval_URLSuffix(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com/data.json",
 		Method: "GET",
@@ -208,7 +208,7 @@ func TestEval_URLRegex(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com/123",
 		Method: "GET",
@@ -236,7 +236,7 @@ func TestEval_Method(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "POST",
@@ -264,7 +264,7 @@ func TestEval_ResourceType(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:           "req1",
 		URL:          "https://example.com",
 		Method:       "GET",
@@ -293,11 +293,11 @@ func TestEval_HeaderExists(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:      "req1",
 		URL:     "https://example.com",
 		Method:  "GET",
-		Headers: make(traffic.Header),
+		Headers: make(domain.Header),
 	}
 	req.Headers.Set("Authorization", "Bearer token")
 
@@ -324,11 +324,11 @@ func TestEval_HeaderNotExists(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:      "req1",
 		URL:     "https://example.com",
 		Method:  "GET",
-		Headers: make(traffic.Header),
+		Headers: make(domain.Header),
 	}
 
 	matched := eng.Eval(req, rulespec.StageRequest)
@@ -354,7 +354,7 @@ func TestEval_QueryExists(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com?id=123",
 		Method: "GET",
@@ -384,7 +384,7 @@ func TestEval_CookieEquals(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:      "req1",
 		URL:     "https://example.com",
 		Method:  "GET",
@@ -414,7 +414,7 @@ func TestEval_BodyContains(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "POST",
@@ -444,7 +444,7 @@ func TestEval_BodyJsonPath(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "POST",
@@ -487,7 +487,7 @@ func TestEval_Priority(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -523,7 +523,7 @@ func TestEval_Disabled(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -552,7 +552,7 @@ func TestEval_WrongStage(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -582,7 +582,7 @@ func TestEval_AnyOf(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -611,7 +611,7 @@ func TestRecordStats(t *testing.T) {
 	}
 
 	eng := engine.New(cfg)
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",

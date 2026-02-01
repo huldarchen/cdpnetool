@@ -10,7 +10,7 @@ import {
   Play,
   Square
 } from 'lucide-react'
-import type { NetworkEvent, ResponseInfo, RequestInfo } from '@/types/events'
+import type { NetworkEvent, Response as TrafficResponse, Request as TrafficRequest } from '@/types/events'
 
 interface NetworkPanelProps {
   events: NetworkEvent[]
@@ -162,7 +162,7 @@ function TrafficItem({ event, isExpanded, onToggleExpand }: { event: NetworkEven
   )
 }
 
-function TrafficDetailView({ request, response }: { request: RequestInfo, response?: ResponseInfo }) {
+function TrafficDetailView({ request, response }: { request: TrafficRequest, response?: TrafficResponse }) {
   return (
     <div className="space-y-6">
       <section>

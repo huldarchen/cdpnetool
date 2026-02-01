@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"strings"
 
-	"cdpnetool/pkg/traffic"
+	"cdpnetool/pkg/domain"
 
 	"github.com/mafredri/cdp/protocol/fetch"
 )
 
-// ToNeutralRequest 将 CDP 事件转换为中立 Request 模型
-func ToNeutralRequest(ev *fetch.RequestPausedReply) *traffic.Request {
-	req := traffic.NewRequest()
+// ToNeutralRequest 将 CDP 事件转换为领域 Request 模型
+func ToNeutralRequest(ev *fetch.RequestPausedReply) *domain.Request {
+	req := domain.NewRequest()
 	req.ID = string(ev.RequestID)
 	req.URL = ev.Request.URL
 	req.Method = ev.Request.Method
@@ -52,9 +52,9 @@ func ToNeutralRequest(ev *fetch.RequestPausedReply) *traffic.Request {
 	return req
 }
 
-// ToNeutralResponse 将 CDP 事件转换为中立 Response 模型
-func ToNeutralResponse(ev *fetch.RequestPausedReply, body []byte) *traffic.Response {
-	res := traffic.NewResponse()
+// ToNeutralResponse 将 CDP 事件转换为领域 Response 模型
+func ToNeutralResponse(ev *fetch.RequestPausedReply, body []byte) *domain.Response {
+	res := domain.NewResponse()
 	if ev.ResponseStatusCode != nil {
 		res.StatusCode = *ev.ResponseStatusCode
 	}
@@ -65,8 +65,8 @@ func ToNeutralResponse(ev *fetch.RequestPausedReply, body []byte) *traffic.Respo
 	return res
 }
 
-// ToHeaderEntries 将中立 Header 转换为 CDP Header 条目
-func ToHeaderEntries(h traffic.Header) []fetch.HeaderEntry {
+// ToHeaderEntries 将领域 Header 转换为 CDP Header 条目
+func ToHeaderEntries(h domain.Header) []fetch.HeaderEntry {
 	entries := make([]fetch.HeaderEntry, 0, len(h))
 	for k, v := range h {
 		entries = append(entries, fetch.HeaderEntry{Name: k, Value: v})

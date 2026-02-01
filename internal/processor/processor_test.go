@@ -12,7 +12,6 @@ import (
 	"cdpnetool/internal/tracker"
 	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
-	"cdpnetool/pkg/traffic"
 )
 
 func TestNew(t *testing.T) {
@@ -46,7 +45,7 @@ func TestProcessRequest_NoMatch(t *testing.T) {
 	trafficAud := audit.New(trafficChan, logger.NewNop())
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -89,7 +88,7 @@ func TestProcessRequest_Block(t *testing.T) {
 	cfg.Rules = []rulespec.Rule{rule}
 	eng.Update(cfg)
 
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com/test",
 		Method: "GET",
@@ -137,11 +136,11 @@ func TestProcessRequest_ModifyHeader(t *testing.T) {
 	cfg.Rules = []rulespec.Rule{rule}
 	eng.Update(cfg)
 
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:      "req1",
 		URL:     "https://example.com/test",
 		Method:  "GET",
-		Headers: make(traffic.Header),
+		Headers: make(domain.Header),
 	}
 
 	result := p.ProcessRequest(context.Background(), req)
@@ -186,7 +185,7 @@ func TestProcessRequest_ModifyURL(t *testing.T) {
 	cfg.Rules = []rulespec.Rule{rule}
 	eng.Update(cfg)
 
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://old.com/test",
 		Method: "GET",
@@ -214,7 +213,7 @@ func TestProcessResponse_NoMatch(t *testing.T) {
 	trafficAud := audit.New(trafficChan, logger.NewNop())
 	p := processor.New(tr, eng, matchedAud, trafficAud, logger.NewNop())
 
-	result := p.ProcessResponse(context.Background(), "req1", &traffic.Response{})
+	result := p.ProcessResponse(context.Background(), "req1", &domain.Response{})
 	if result.Action != processor.ActionPass {
 		t.Errorf("got action %v, want %v", result.Action, processor.ActionPass)
 	}
@@ -250,7 +249,7 @@ func TestProcessResponse_ModifyStatus(t *testing.T) {
 	cfg.Rules = []rulespec.Rule{rule}
 	eng.Update(cfg)
 
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com/test",
 		Method: "GET",
@@ -263,9 +262,9 @@ func TestProcessResponse_ModifyStatus(t *testing.T) {
 		IsModified:   false,
 	})
 
-	res := &traffic.Response{
+	res := &domain.Response{
 		StatusCode: 404,
-		Headers:    make(traffic.Header),
+		Headers:    make(domain.Header),
 	}
 
 	result := p.ProcessResponse(context.Background(), "req1", res)
@@ -307,7 +306,7 @@ func TestProcessResponse_ModifyHeader(t *testing.T) {
 	cfg.Rules = []rulespec.Rule{rule}
 	eng.Update(cfg)
 
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com/test",
 		Method: "GET",
@@ -319,9 +318,9 @@ func TestProcessResponse_ModifyHeader(t *testing.T) {
 		IsModified:   false,
 	})
 
-	res := &traffic.Response{
+	res := &domain.Response{
 		StatusCode: 200,
-		Headers:    make(traffic.Header),
+		Headers:    make(domain.Header),
 	}
 
 	result := p.ProcessResponse(context.Background(), "req1", res)

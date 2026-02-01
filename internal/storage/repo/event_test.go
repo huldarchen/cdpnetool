@@ -48,11 +48,11 @@ func TestEventRepo_AsyncWrite(t *testing.T) {
 			Session:   "test-session",
 			Target:    "test-target",
 			IsMatched: true,
-			Request: domain.RequestInfo{
+			Request: domain.Request{
 				URL:    "http://example.com",
 				Method: "GET",
 			},
-			Response: domain.ResponseInfo{
+			Response: &domain.Response{
 				StatusCode: 200,
 			},
 			FinalResult: "passed",
@@ -92,24 +92,24 @@ func TestEventRepo_QueryWithFilters(t *testing.T) {
 		{
 			Session:     "s1",
 			IsMatched:   true,
-			Request:     domain.RequestInfo{URL: "http://a.com", Method: "GET"},
-			Response:    domain.ResponseInfo{StatusCode: 200},
+			Request:     domain.Request{URL: "http://a.com", Method: "GET"},
+			Response:    &domain.Response{StatusCode: 200},
 			FinalResult: "passed",
 			Timestamp:   1000,
 		},
 		{
 			Session:     "s1",
 			IsMatched:   true,
-			Request:     domain.RequestInfo{URL: "http://b.com", Method: "POST"},
-			Response:    domain.ResponseInfo{StatusCode: 403},
+			Request:     domain.Request{URL: "http://b.com", Method: "POST"},
+			Response:    &domain.Response{StatusCode: 403},
 			FinalResult: "blocked",
 			Timestamp:   2000,
 		},
 		{
 			Session:     "s2",
 			IsMatched:   true,
-			Request:     domain.RequestInfo{URL: "http://c.com", Method: "GET"},
-			Response:    domain.ResponseInfo{StatusCode: 200},
+			Request:     domain.Request{URL: "http://c.com", Method: "GET"},
+			Response:    &domain.Response{StatusCode: 200},
 			FinalResult: "modified",
 			Timestamp:   3000,
 		},

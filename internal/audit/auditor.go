@@ -5,7 +5,6 @@ import (
 
 	"cdpnetool/internal/logger"
 	"cdpnetool/pkg/domain"
-	"cdpnetool/pkg/traffic"
 )
 
 // Auditor 审计与观察者，负责流量快照的记录、持久化与分发
@@ -36,13 +35,13 @@ func (a *Auditor) SetEnabled(enabled bool) {
 func (a *Auditor) Record(
 	sessionID string,
 	targetID string,
-	req *traffic.Request,
-	res *traffic.Response,
+	req *domain.Request,
+	res *domain.Response,
 	result string,
 	matchedRules []domain.RuleMatch,
 ) {
 	if !a.enabled || req == nil {
-		if !a.enabled {
+		if !a.enabled && req != nil {
 			a.log.Debug("[Auditor] 审计已禁用，跳过记录", "requestID", req.ID)
 		}
 		return
@@ -58,21 +57,8 @@ func (a *Auditor) Record(
 		IsMatched:    len(matchedRules) > 0,
 		FinalResult:  result,
 		MatchedRules: matchedRules,
-		Request: domain.RequestInfo{
-			URL:          req.URL,
-			Method:       req.Method,
-			Headers:      req.Headers,
-			Body:         string(req.Body),
-			ResourceType: req.ResourceType,
-		},
-	}
-
-	if res != nil {
-		evt.Response = domain.ResponseInfo{
-			StatusCode: res.StatusCode,
-			Headers:    res.Headers,
-			Body:       string(res.Body),
-		}
+		Request:      *req,
+		Response:     res,
 	}
 
 	a.dispatch(evt)

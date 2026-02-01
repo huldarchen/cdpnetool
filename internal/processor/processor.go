@@ -10,15 +10,14 @@ import (
 	"cdpnetool/internal/transformer"
 	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
-	"cdpnetool/pkg/traffic"
 )
 
 // Result 处理结果
 type Result struct {
-	Action      Action            // 动作：放行、修改、拦截
-	ModifiedReq *traffic.Request  // 修改后的请求
-	ModifiedRes *traffic.Response // 修改后的响应
-	MockRes     *traffic.Response // 伪造的响应
+	Action      Action           // 动作：放行、修改、拦截
+	ModifiedReq *domain.Request  // 修改后的请求
+	ModifiedRes *domain.Response // 修改后的响应
+	MockRes     *domain.Response // 伪造的响应
 }
 
 type Action string
@@ -31,7 +30,7 @@ const (
 
 // PendingState 暂存在 tracker 中的请求上下文
 type PendingState struct {
-	Request      *traffic.Request
+	Request      *domain.Request
 	MatchedRules []*engine.MatchedRule
 	IsModified   bool
 }
@@ -68,7 +67,7 @@ func (p *Processor) SetContext(sessionID, targetID string) {
 }
 
 // ProcessRequest 处理请求阶段逻辑
-func (p *Processor) ProcessRequest(ctx context.Context, req *traffic.Request) Result {
+func (p *Processor) ProcessRequest(ctx context.Context, req *domain.Request) Result {
 	p.log.Debug("[Processor] 开始处理请求", "requestID", req.ID, "url", req.URL, "method", req.Method)
 
 	matched := p.engine.Eval(req, rulespec.StageRequest)
@@ -93,7 +92,7 @@ func (p *Processor) ProcessRequest(ctx context.Context, req *traffic.Request) Re
 			if action.Type == rulespec.ActionBlock {
 				p.log.Info("[Processor] 执行 Block 动作", "requestID", req.ID, "ruleID", mr.Rule.ID, "statusCode", action.StatusCode)
 				res.Action = ActionBlock
-				res.MockRes = traffic.NewResponse()
+				res.MockRes = domain.NewResponse()
 				res.MockRes.StatusCode = action.StatusCode
 				if action.Body != "" {
 					body, err := transformer.DecodeBody(action.Body, action.GetBodyEncoding())
@@ -104,7 +103,7 @@ func (p *Processor) ProcessRequest(ctx context.Context, req *traffic.Request) Re
 						res.MockRes.Body = []byte(body)
 					}
 				}
-				res.MockRes.Headers = make(traffic.Header)
+				res.MockRes.Headers = make(domain.Header)
 				for k, v := range action.Headers {
 					res.MockRes.Headers.Set(k, v)
 				}
@@ -142,7 +141,7 @@ func (p *Processor) ProcessRequest(ctx context.Context, req *traffic.Request) Re
 }
 
 // ProcessResponse 处理响应阶段逻辑
-func (p *Processor) ProcessResponse(ctx context.Context, reqID string, res *traffic.Response) Result {
+func (p *Processor) ProcessResponse(ctx context.Context, reqID string, res *domain.Response) Result {
 	p.log.Debug("[Processor] 开始处理响应", "requestID", reqID, "statusCode", res.StatusCode)
 
 	stateVal, ok := p.tracker.Get(reqID)
@@ -214,7 +213,7 @@ func (p *Processor) toRuleMatches(matched []*engine.MatchedRule) []domain.RuleMa
 }
 
 // applyRequestAction 应用单个请求修改动作
-func (p *Processor) applyRequestAction(req *traffic.Request, action rulespec.Action) {
+func (p *Processor) applyRequestAction(req *domain.Request, action rulespec.Action) {
 	p.log.Debug("[Processor] 应用请求修改", "requestID", req.ID, "actionType", action.Type, "actionName", action.Name)
 	switch action.Type {
 	case rulespec.ActionSetUrl:
@@ -291,7 +290,7 @@ func (p *Processor) applyRequestAction(req *traffic.Request, action rulespec.Act
 }
 
 // applyResponseAction 应用单个响应修改动作
-func (p *Processor) applyResponseAction(res *traffic.Response, action rulespec.Action, reqID string) {
+func (p *Processor) applyResponseAction(res *domain.Response, action rulespec.Action, reqID string) {
 	p.log.Debug("[Processor] 应用响应修改", "requestID", reqID, "actionType", action.Type, "actionName", action.Name)
 	switch action.Type {
 	case rulespec.ActionSetStatus:

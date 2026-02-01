@@ -7,7 +7,6 @@ import (
 	"cdpnetool/internal/audit"
 	"cdpnetool/internal/logger"
 	"cdpnetool/pkg/domain"
-	"cdpnetool/pkg/traffic"
 )
 
 func TestNew(t *testing.T) {
@@ -32,7 +31,7 @@ func TestSetEnabled(t *testing.T) {
 
 	aud.SetEnabled(false)
 	// 验证禁用后不记录事件
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -51,17 +50,17 @@ func TestRecord_Basic(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
 	aud := audit.New(events, logger.NewNop())
 
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:           "req1",
 		URL:          "https://example.com",
 		Method:       "GET",
-		Headers:      make(traffic.Header),
+		Headers:      make(domain.Header),
 		ResourceType: "xhr",
 	}
 
-	res := &traffic.Response{
+	res := &domain.Response{
 		StatusCode: 200,
-		Headers:    make(traffic.Header),
+		Headers:    make(domain.Header),
 		Body:       []byte("response body"),
 	}
 
@@ -120,7 +119,7 @@ func TestRecord_NilResponse(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
 	aud := audit.New(events, logger.NewNop())
 
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -133,9 +132,9 @@ func TestRecord_NilResponse(t *testing.T) {
 		if evt.ID != "req1" {
 			t.Errorf("got ID %v, want req1", evt.ID)
 		}
-		// 验证 Response 为零值
-		if evt.Response.StatusCode != 0 {
-			t.Errorf("got StatusCode %v, want 0", evt.Response.StatusCode)
+		// 验证 Response 为 nil
+		if evt.Response != nil {
+			t.Errorf("got Response %v, want nil", evt.Response)
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Error("timeout waiting for event")
@@ -146,7 +145,7 @@ func TestRecord_NoMatchedRules(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 10)
 	aud := audit.New(events, logger.NewNop())
 
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -171,12 +170,12 @@ func TestDispatch_FullChannel(t *testing.T) {
 	events := make(chan domain.NetworkEvent, 1)
 	aud := audit.New(events, logger.NewNop())
 
-	req1 := &traffic.Request{
+	req1 := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
 	}
-	req2 := &traffic.Request{
+	req2 := &domain.Request{
 		ID:     "req2",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -209,7 +208,7 @@ func TestDispatch_FullChannel(t *testing.T) {
 func TestDispatch_NilChannel(t *testing.T) {
 	aud := audit.New(nil, logger.NewNop())
 
-	req := &traffic.Request{
+	req := &domain.Request{
 		ID:     "req1",
 		URL:    "https://example.com",
 		Method: "GET",
@@ -224,7 +223,7 @@ func TestRecord_MultipleEvents(t *testing.T) {
 	aud := audit.New(events, logger.NewNop())
 
 	for i := 0; i < 3; i++ {
-		req := &traffic.Request{
+		req := &domain.Request{
 			ID:     "req" + string(rune('1'+i)),
 			URL:    "https://example.com",
 			Method: "GET",

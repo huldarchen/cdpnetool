@@ -1,7 +1,7 @@
 // 拦截事件相关类型
 
 // 请求信息
-export interface RequestInfo {
+export interface Request {
   url: string
   method: string
   headers: Record<string, string>
@@ -10,7 +10,7 @@ export interface RequestInfo {
 }
 
 // 响应信息
-export interface ResponseInfo {
+export interface Response {
   statusCode: number
   headers: Record<string, string>
   body: string
@@ -34,8 +34,8 @@ export interface NetworkEvent {
   target: string
   timestamp: number
   isMatched: boolean
-  request: RequestInfo
-  response?: ResponseInfo
+  request: Request
+  response?: Response
   finalResult?: 'blocked' | 'modified' | 'passed'
   matchedRules?: RuleMatch[]
 }

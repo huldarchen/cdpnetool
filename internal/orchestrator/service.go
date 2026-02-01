@@ -16,7 +16,6 @@ import (
 	"cdpnetool/internal/tracker"
 	"cdpnetool/pkg/domain"
 	"cdpnetool/pkg/rulespec"
-	"cdpnetool/pkg/traffic"
 
 	"github.com/mafredri/cdp/protocol/fetch"
 )
@@ -433,7 +432,7 @@ func (o *Orchestrator) applyResult(state *sessionState, ts *cdp.TargetSession, e
 		} else {
 			// 响应阶段修改：统一使用 FulfillRequest 全量覆盖
 			code := 200
-			var headers traffic.Header
+			var headers domain.Header
 			var body []byte
 
 			if res.ModifiedRes != nil {
@@ -444,7 +443,7 @@ func (o *Orchestrator) applyResult(state *sessionState, ts *cdp.TargetSession, e
 				if ev.ResponseStatusCode != nil {
 					code = *ev.ResponseStatusCode
 				}
-				headers = make(traffic.Header)
+				headers = make(domain.Header)
 				for _, h := range ev.ResponseHeaders {
 					headers.Set(h.Name, h.Value)
 				}
