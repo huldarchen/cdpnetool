@@ -435,8 +435,8 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
             <div className="p-3 border-b flex items-center justify-between">
               <span className="font-medium text-sm shrink-0">{t('rules.listTitle')}</span>
               <div className="flex items-center gap-0.5">
-                <Button size="sm" variant="ghost" onClick={handleCreateRuleSet} title={t('common.add')} className="h-8 w-8 p-0">
-                  <Plus className="w-4 h-4" />
+                <Button size="sm" variant="ghost" onClick={handleCreateRuleSet} className="h-8 px-2 text-xs font-medium">
+                  {t('common.add')}
                 </Button>
                 <Button 
                   size="sm" 
