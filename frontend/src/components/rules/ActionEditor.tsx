@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { X, Plus, Trash2, GripVertical, AlertCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { Action, ActionType, Stage, JSONPatchOp, BodyEncoding } from '@/types/rules'
 import {
   ACTION_TYPE_LABELS,
@@ -29,6 +30,7 @@ function getActionTypeOptions(stage: Stage): { value: ActionType; label: string 
 }
 
 export function ActionEditor({ action, onChange, onRemove, stage }: ActionEditorProps) {
+  const { t } = useTranslation()
   const handleTypeChange = (newType: ActionType) => {
     onChange(createEmptyAction(newType, stage))
   }
@@ -52,7 +54,7 @@ export function ActionEditor({ action, onChange, onRemove, stage }: ActionEditor
             {isTerminal && (
               <Badge variant="destructive" className="text-xs">
                 <AlertCircle className="w-3 h-3 mr-1" />
-                终结性
+                {t('rules.terminalAction')}
               </Badge>
             )}
           </div>
@@ -72,6 +74,7 @@ export function ActionEditor({ action, onChange, onRemove, stage }: ActionEditor
 
 // 渲染行为字段
 function renderActionFields(action: Action, onChange: (action: Action) => void) {
+  const { t } = useTranslation()
   const updateField = <K extends keyof Action>(key: K, value: Action[K]) => {
     onChange({ ...action, [key]: value })
   }
@@ -82,7 +85,7 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
         <Input
           value={(action.value as string) || ''}
           onChange={(e) => updateField('value', e.target.value)}
-          placeholder="新的 URL..."
+          placeholder={t('rules.newUrl')}
         />
       )
 
@@ -119,7 +122,7 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
           <Input
             value={(action.value as string) || ''}
             onChange={(e) => updateField('value', e.target.value)}
-            placeholder="值..."
+            placeholder={t('rules.headerValue')}
             className="flex-1"
           />
         </div>
@@ -147,8 +150,8 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
               value={action.encoding || 'text'}
               onChange={(e) => updateField('encoding', e.target.value as BodyEncoding)}
               options={[
-                { value: 'text', label: '文本' },
-                { value: 'base64', label: 'Base64' },
+                { value: 'text', label: t('rules.textEncoding') },
+                { value: 'base64', label: t('rules.base64Encoding') },
               ]}
               className="w-28"
             />
@@ -158,8 +161,8 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
             onChange={(e) => updateField('value', e.target.value)}
             placeholder={
               action.type === 'appendBody'
-                ? (action.encoding === 'base64' ? '追加的 Base64 编码内容...' : '追加的内容...')
-                : (action.encoding === 'base64' ? 'Base64 编码内容...' : 'Body 内容...')
+                ? (action.encoding === 'base64' ? t('rules.appendBase64Content') : t('rules.appendContent'))
+                : (action.encoding === 'base64' ? t('rules.base64Content') : t('rules.bodyContent'))
             }
             rows={4}
             className="font-mono text-sm"
@@ -174,13 +177,13 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
             <Input
               value={action.search || ''}
               onChange={(e) => updateField('search', e.target.value)}
-              placeholder="搜索文本..."
+              placeholder={t('rules.searchText')}
               className="flex-1"
             />
             <Input
               value={action.replace || ''}
               onChange={(e) => updateField('replace', e.target.value)}
-              placeholder="替换为..."
+              placeholder={t('rules.replaceWith')}
               className="flex-1"
             />
           </div>
@@ -191,7 +194,7 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
               onChange={(e) => updateField('replaceAll', e.target.checked)}
               className="rounded"
             />
-            替换所有匹配
+            {t('rules.replaceAll')}
           </label>
         </div>
       )
@@ -210,7 +213,7 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
           type="number"
           value={(action.value as number) || 200}
           onChange={(e) => updateField('value', parseInt(e.target.value) || 200)}
-          placeholder="状态码"
+          placeholder={t('rules.statusCode')}
           min={100}
           max={599}
           className="w-24"
@@ -225,7 +228,7 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
               type="number"
               value={action.statusCode || 200}
               onChange={(e) => onChange({ ...action, statusCode: parseInt(e.target.value) || 200 })}
-              placeholder="状态码"
+              placeholder={t('rules.statusCode')}
               min={100}
               max={599}
               className="w-24"
@@ -234,21 +237,21 @@ function renderActionFields(action: Action, onChange: (action: Action) => void) 
               value={action.bodyEncoding || 'text'}
               onChange={(e) => onChange({ ...action, bodyEncoding: e.target.value as BodyEncoding })}
               options={[
-                { value: 'text', label: '文本' },
-                { value: 'base64', label: 'Base64' },
+                { value: 'text', label: t('rules.textEncoding') },
+                { value: 'base64', label: t('rules.base64Encoding') },
               ]}
               className="w-28"
             />
           </div>
           <KeyValueEditor
-            title="响应头"
+            title={t('rules.responseHeaders')}
             data={action.headers || {}}
             onChange={(headers) => onChange({ ...action, headers })}
           />
           <Textarea
             value={action.body || ''}
             onChange={(e) => onChange({ ...action, body: e.target.value })}
-            placeholder={action.bodyEncoding === 'base64' ? 'Base64 编码的响应体...' : '响应体内容...'}
+            placeholder={action.bodyEncoding === 'base64' ? t('rules.base64ResponseBody') : t('rules.responseBody')}
             rows={4}
             className="font-mono text-sm"
           />
@@ -288,6 +291,7 @@ interface KeyValueEditorProps {
 
 // Key-Value 编辑器
 function KeyValueEditor({ title, data, onChange }: KeyValueEditorProps) {
+  const { t } = useTranslation()
   const entries = Object.entries(data)
 
   const addEntry = () => {
@@ -315,13 +319,13 @@ function KeyValueEditor({ title, data, onChange }: KeyValueEditorProps) {
         <label className="text-sm font-medium">{title}</label>
         <Button variant="outline" size="sm" onClick={addEntry}>
           <Plus className="w-4 h-4 mr-1" />
-          添加
+          {t('common.add')}
         </Button>
       </div>
 
       {entries.length === 0 ? (
         <div className="text-sm text-muted-foreground p-2 border rounded border-dashed text-center">
-          暂无配置
+          {t('rules.kvNoConfig')}
         </div>
       ) : (
         <div className="space-y-2">
@@ -330,13 +334,13 @@ function KeyValueEditor({ title, data, onChange }: KeyValueEditorProps) {
               <Input
                 value={key}
                 onChange={(e) => updateEntry(key, e.target.value, value)}
-                placeholder="键"
+                placeholder={t('rules.kvKey')}
                 className="flex-1"
               />
               <Input
                 value={value}
                 onChange={(e) => updateEntry(key, key, e.target.value)}
-                placeholder="值"
+                placeholder={t('rules.kvValue')}
                 className="flex-1"
               />
               <Button variant="ghost" size="icon" onClick={() => removeEntry(key)}>
@@ -357,12 +361,13 @@ interface JSONPatchEditorProps {
 
 // JSON Patch 编辑器
 function JSONPatchEditor({ patches, onChange }: JSONPatchEditorProps) {
+  const { t } = useTranslation()
   const opOptions = [
-    { value: 'add', label: '添加' },
-    { value: 'remove', label: '删除' },
-    { value: 'replace', label: '替换' },
-    { value: 'move', label: '移动' },
-    { value: 'copy', label: '复制' },
+    { value: 'add', label: t('rules.patchOpAdd') },
+    { value: 'remove', label: t('rules.patchOpRemove') },
+    { value: 'replace', label: t('rules.patchOpReplace') },
+    { value: 'move', label: t('rules.patchOpMove') },
+    { value: 'copy', label: t('rules.patchOpCopy') },
   ]
 
   const addPatch = () => {
@@ -382,16 +387,16 @@ function JSONPatchEditor({ patches, onChange }: JSONPatchEditorProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium">JSON Patch 操作</label>
+        <label className="text-sm font-medium">{t('rules.jsonPatchOps')}</label>
         <Button variant="outline" size="sm" onClick={addPatch}>
           <Plus className="w-4 h-4 mr-1" />
-          添加操作
+          {t('rules.addOperation')}
         </Button>
       </div>
 
       {patches.length === 0 ? (
         <div className="text-sm text-muted-foreground p-2 border rounded border-dashed text-center">
-          暂无 JSON Patch 操作
+          {t('rules.noJsonPatch')}
         </div>
       ) : (
         <div className="space-y-2">
@@ -406,14 +411,14 @@ function JSONPatchEditor({ patches, onChange }: JSONPatchEditorProps) {
               <Input
                 value={patch.path}
                 onChange={(e) => updatePatch(index, { ...patch, path: e.target.value })}
-                placeholder="路径 (如 /data/id)"
+                placeholder={t('rules.jsonPath')}
                 className="w-36"
               />
               {(patch.op === 'move' || patch.op === 'copy') && (
                 <Input
                   value={patch.from || ''}
                   onChange={(e) => updatePatch(index, { ...patch, from: e.target.value })}
-                  placeholder="源路径"
+                  placeholder={t('rules.jsonSourcePath')}
                   className="w-32"
                 />
               )}
@@ -425,7 +430,7 @@ function JSONPatchEditor({ patches, onChange }: JSONPatchEditorProps) {
                     try { val = JSON.parse(e.target.value) } catch { }
                     updatePatch(index, { ...patch, value: val })
                   }}
-                  placeholder="值 (JSON)"
+                  placeholder={t('rules.jsonValue')}
                   className="flex-1"
                 />
               )}
@@ -444,10 +449,12 @@ interface ActionsEditorProps {
   actions: Action[]
   onChange: (actions: Action[]) => void
   stage: Stage
+  onStageChange?: (stage: Stage) => void
 }
 
 // 行为列表编辑器
-export function ActionsEditor({ actions, onChange, stage }: ActionsEditorProps) {
+export function ActionsEditor({ actions, onChange, stage, onStageChange }: ActionsEditorProps) {
+  const { t } = useTranslation()
   const addAction = () => {
     const defaultType = stage === 'request' ? 'setHeader' : 'setHeader'
     onChange([...actions, createEmptyAction(defaultType, stage)])
@@ -466,19 +473,30 @@ export function ActionsEditor({ actions, onChange, stage }: ActionsEditorProps) 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div>
-          <h4 className="font-medium">执行行为</h4>
-          <p className="text-xs text-muted-foreground">按顺序依次执行，终结性行为会中断后续执行</p>
+        <div className="flex items-center gap-4">
+          <Select
+            value={stage}
+            onChange={(e) => onStageChange?.(e.target.value as Stage)}
+            options={[
+              { value: 'request', label: t('rules.requestStage') },
+              { value: 'response', label: t('rules.responseStage') },
+            ]}
+            className="w-32"
+          />
+          <div>
+            <h4 className="font-medium">{t('rules.actions')}</h4>
+            <p className="text-xs text-muted-foreground">{t('rules.actionOrderDesc')}</p>
+          </div>
         </div>
         <Button variant="outline" size="sm" onClick={addAction}>
           <Plus className="w-4 h-4 mr-1" />
-          添加行为
+          {t('rules.addAction')}
         </Button>
       </div>
 
       {actions.length === 0 ? (
         <div className="text-sm text-muted-foreground p-4 border rounded-lg border-dashed text-center">
-          暂无行为，点击上方按钮添加
+          {t('rules.noActions')}
         </div>
       ) : (
         <div className="space-y-2">

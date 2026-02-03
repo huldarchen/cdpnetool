@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { ChevronDown, ChevronUp, Trash2, GripVertical, Power, PowerOff } from 'lucide-react'
 import { ConditionGroup } from './ConditionEditor'
@@ -27,7 +26,8 @@ export function RuleEditor({
   onToggleExpand
 }: RuleEditorProps) {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState<'match' | 'actions'>('match')
+  const [conditionsExpanded, setConditionsExpanded] = useState(true)
+  const [actionsExpanded, setActionsExpanded] = useState(true)
 
   const updateMatch = (key: keyof Match, conditions: Condition[]) => {
     onChange({
@@ -124,7 +124,7 @@ export function RuleEditor({
       {isExpanded && (
         <div className="p-4 space-y-4">
           {/* 基础信息 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-sm font-medium">ID</label>
               <Input
@@ -142,17 +142,6 @@ export function RuleEditor({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('rules.stage')}</label>
-              <Select
-                value={rule.stage}
-                onChange={(e) => onChange({ ...rule, stage: e.target.value as Stage, actions: [] })}
-                options={[
-                  { value: 'request', label: t('rules.requestStage') },
-                  { value: 'response', label: t('rules.responseStage') },
-                ]}
-              />
-            </div>
-            <div className="space-y-1">
               <label className="text-sm font-medium">{t('rules.priority')}</label>
               <Input
                 type="number"
@@ -163,37 +152,66 @@ export function RuleEditor({
             </div>
           </div>
 
-          {/* Match 和 Actions 编辑区 */}
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'match' | 'actions')}>
-            <TabsList>
-              <TabsTrigger value="match">{t('rules.conditions')}</TabsTrigger>
-              <TabsTrigger value="actions">{t('rules.actions')} ({rule.actions.length})</TabsTrigger>
-            </TabsList>
+          {/* 匹配条件 */}
+          <div className="space-y-4">
+            <div 
+              className="relative flex items-center cursor-pointer group"
+              onClick={() => setConditionsExpanded(!conditionsExpanded)}
+            >
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold whitespace-nowrap">{t('rules.conditions')} ({conditionCount})</h3>
+                {conditionsExpanded ? (
+                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex-1 ml-3 border-t border-dashed border-border"></div>
+            </div>
+            {conditionsExpanded && (
+              <div className="space-y-4">
+                <ConditionGroup
+                  title={t('rules.allOf')}
+                  description={t('rules.allOfDesc')}
+                  conditions={rule.match.allOf || []}
+                  onChange={(conditions) => updateMatch('allOf', conditions)}
+                />
 
-            <TabsContent value="match" className="space-y-4 pt-4">
-              <ConditionGroup
-                title={t('rules.allOf')}
-                description={t('rules.allOfDesc')}
-                conditions={rule.match.allOf || []}
-                onChange={(conditions) => updateMatch('allOf', conditions)}
-              />
+                <ConditionGroup
+                  title={t('rules.anyOf')}
+                  description={t('rules.anyOfDesc')}
+                  conditions={rule.match.anyOf || []}
+                  onChange={(conditions) => updateMatch('anyOf', conditions)}
+                />
+              </div>
+            )}
+          </div>
 
-              <ConditionGroup
-                title={t('rules.anyOf')}
-                description={t('rules.anyOfDesc')}
-                conditions={rule.match.anyOf || []}
-                onChange={(conditions) => updateMatch('anyOf', conditions)}
-              />
-            </TabsContent>
-
-            <TabsContent value="actions" className="space-y-4 pt-4">
+          {/* 执行行为 */}
+          <div className="space-y-4">
+            <div 
+              className="relative flex items-center cursor-pointer group"
+              onClick={() => setActionsExpanded(!actionsExpanded)}
+            >
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold whitespace-nowrap">{t('rules.actions')} ({rule.actions.length})</h3>
+                {actionsExpanded ? (
+                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex-1 ml-3 border-t border-dashed border-border"></div>
+            </div>
+            {actionsExpanded && (
               <ActionsEditor
                 actions={rule.actions}
                 onChange={updateActions}
                 stage={rule.stage}
+                onStageChange={(stage) => onChange({ ...rule, stage, actions: [] })}
               />
-            </TabsContent>
-          </Tabs>
+            )}
+          </div>
         </div>
       )}
     </div>
