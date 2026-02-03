@@ -1,13 +1,12 @@
 import { useState, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ChevronDown, ChevronUp, Trash2, GripVertical, Power, PowerOff } from 'lucide-react'
 import { ConditionGroup } from './ConditionEditor'
 import { ActionsEditor } from './ActionEditor'
-import type { Rule, Stage, Match, Action, Condition } from '@/types/rules'
-import { ACTION_TYPE_LABELS, isTerminalAction } from '@/types/rules'
+import type { Rule, Match, Action, Condition } from '@/types/rules'
+import { isTerminalAction, getActionTypeLabel } from '@/types/rules'
 import { useTranslation } from 'react-i18next'
 
 interface RuleEditorProps {
@@ -57,7 +56,7 @@ export function RuleEditor({
   // 获取行为摘要
   const actionsSummary = useMemo(() => {
     if (rule.actions.length === 0) return 'No actions'
-    const types = rule.actions.map(a => ACTION_TYPE_LABELS[a.type])
+    const types = rule.actions.map(a => getActionTypeLabel(a.type))
     if (types.length <= 2) return types.join(', ')
     return `${types[0]} & ${types.length - 1} more`
   }, [rule.actions])

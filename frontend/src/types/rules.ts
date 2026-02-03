@@ -1,3 +1,5 @@
+import i18next from 'i18next'
+
 // 规则配置类型定义 (v2)
 // 与后端 pkg/rulespec/types.go 保持一致
 
@@ -166,6 +168,16 @@ export const CONDITION_GROUPS = {
 } as const
 
 // 条件类型标签
+export function getConditionTypeLabel(type: ConditionType): string {
+  return i18next.t(`rules.conditionTypes.${type}`, { defaultValue: type })
+}
+
+// 条件类型简短标签（用于选择器）
+export function getConditionTypeShortLabel(type: ConditionType): string {
+  return i18next.t(`rules.conditionTypesShort.${type}`, { defaultValue: type })
+}
+
+// 保留原常量供兼容
 export const CONDITION_TYPE_LABELS: Record<ConditionType, string> = {
   urlEquals: 'URL 精确匹配',
   urlPrefix: 'URL 前缀匹配',
@@ -194,7 +206,7 @@ export const CONDITION_TYPE_LABELS: Record<ConditionType, string> = {
   bodyJsonPath: 'JSON Path 匹配'
 }
 
-// 条件类型简短标签（用于选择器）
+// 保留原常量供兼容
 export const CONDITION_TYPE_SHORT_LABELS: Record<ConditionType, string> = {
   urlEquals: 'URL =',
   urlPrefix: 'URL 前缀',
@@ -238,6 +250,11 @@ export const RESPONSE_ACTIONS: ActionType[] = [
 ]
 
 // 行为类型标签
+export function getActionTypeLabel(type: ActionType): string {
+  return i18next.t(`rules.actionTypes.${type}`, { defaultValue: type })
+}
+
+// 保留原常量供兼容
 export const ACTION_TYPE_LABELS: Record<ActionType, string> = {
   setUrl: '设置 URL',
   setMethod: '设置 Method',
@@ -326,7 +343,7 @@ export function createEmptyAction(type: ActionType = 'setHeader', _stage: Stage 
 export function createEmptyRule(stage: Stage = 'request'): Rule {
   return {
     id: `rule_${Date.now()}`,
-    name: '新规则',
+    name: i18next.t('rules.newRuleName', { defaultValue: '新规则' }),
     enabled: true,
     priority: 100,
     stage,

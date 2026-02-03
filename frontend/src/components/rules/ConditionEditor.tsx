@@ -5,12 +5,12 @@ import { Badge } from '@/components/ui/badge'
 import { X, Plus } from 'lucide-react'
 import type { Condition, ConditionType } from '@/types/rules'
 import {
-  CONDITION_TYPE_SHORT_LABELS,
   CONDITION_GROUPS,
   HTTP_METHODS,
   RESOURCE_TYPES,
   createEmptyCondition,
-  getConditionFields
+  getConditionFields,
+  getConditionTypeShortLabel
 } from '@/types/rules'
 import { useTranslation } from 'react-i18next'
 
@@ -20,25 +20,26 @@ interface ConditionEditorProps {
   onRemove: () => void
 }
 
-// 条件类型选项（扁平化列表）
-const conditionTypeOptions: { value: ConditionType; label: string }[] = [
-  // URL
-  ...CONDITION_GROUPS.url.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
-  // 方法/资源
-  ...CONDITION_GROUPS.method.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
-  ...CONDITION_GROUPS.resourceType.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
-  // Header
-  ...CONDITION_GROUPS.header.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
-  // Query
-  ...CONDITION_GROUPS.query.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
-  // Cookie
-  ...CONDITION_GROUPS.cookie.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
-  // Body
-  ...CONDITION_GROUPS.body.map(t => ({ value: t as ConditionType, label: CONDITION_TYPE_SHORT_LABELS[t] })),
-]
-
 export function ConditionEditor({ condition, onChange, onRemove }: ConditionEditorProps) {
   const { t } = useTranslation()
+  
+  // 动态生成条件类型选项
+  const conditionTypeOptions: { value: ConditionType; label: string }[] = [
+    // URL
+    ...CONDITION_GROUPS.url.map(t => ({ value: t as ConditionType, label: getConditionTypeShortLabel(t) })),
+    // 方法/资源
+    ...CONDITION_GROUPS.method.map(t => ({ value: t as ConditionType, label: getConditionTypeShortLabel(t) })),
+    ...CONDITION_GROUPS.resourceType.map(t => ({ value: t as ConditionType, label: getConditionTypeShortLabel(t) })),
+    // Header
+    ...CONDITION_GROUPS.header.map(t => ({ value: t as ConditionType, label: getConditionTypeShortLabel(t) })),
+    // Query
+    ...CONDITION_GROUPS.query.map(t => ({ value: t as ConditionType, label: getConditionTypeShortLabel(t) })),
+    // Cookie
+    ...CONDITION_GROUPS.cookie.map(t => ({ value: t as ConditionType, label: getConditionTypeShortLabel(t) })),
+    // Body
+    ...CONDITION_GROUPS.body.map(t => ({ value: t as ConditionType, label: getConditionTypeShortLabel(t) })),
+  ]
+  
   const handleTypeChange = (newType: ConditionType) => {
     onChange(createEmptyCondition(newType))
   }

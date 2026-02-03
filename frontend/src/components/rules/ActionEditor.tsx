@@ -7,10 +7,10 @@ import { X, Plus, Trash2, GripVertical, AlertCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Action, ActionType, Stage, JSONPatchOp, BodyEncoding } from '@/types/rules'
 import {
-  ACTION_TYPE_LABELS,
   createEmptyAction,
   isTerminalAction,
-  getActionsForStage
+  getActionsForStage,
+  getActionTypeLabel
 } from '@/types/rules'
 
 interface ActionEditorProps {
@@ -25,7 +25,7 @@ function getActionTypeOptions(stage: Stage): { value: ActionType; label: string 
   const actions = getActionsForStage(stage)
   return actions.map(type => ({
     value: type,
-    label: ACTION_TYPE_LABELS[type]
+    label: getActionTypeLabel(type)
   }))
 }
 
