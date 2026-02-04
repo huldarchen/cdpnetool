@@ -204,9 +204,14 @@ func (p *Processor) ProcessResponse(ctx context.Context, reqID string, res *doma
 func (p *Processor) toRuleMatches(matched []*engine.MatchedRule) []domain.RuleMatch {
 	res := make([]domain.RuleMatch, len(matched))
 	for i, m := range matched {
+		actions := make([]string, len(m.Rule.Actions))
+		for j, action := range m.Rule.Actions {
+			actions[j] = string(action.Type)
+		}
 		res[i] = domain.RuleMatch{
 			RuleID:   m.Rule.ID,
 			RuleName: m.Rule.Name,
+			Actions:  actions,
 		}
 	}
 	return res

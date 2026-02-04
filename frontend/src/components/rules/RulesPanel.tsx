@@ -406,22 +406,34 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     }
   }
 
-  const handleImportFile = (file: File) => {
+  const handleImportFile = async (file: File) => {
     const reader = new FileReader()
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const json = event.target?.result as string
         const imported = JSON.parse(json) as Config
-        if (imported.version && Array.isArray(imported.rules)) {
-          setRuleSet(imported)
-          updateDirty(true)
-          toast({ variant: 'success', title: 'Success' })
-          setShowImportExport(false)
-        } else {
-          toast({ variant: 'destructive', title: 'Error' })
+        if (!imported.version || !Array.isArray(imported.rules)) {
+          toast({ variant: 'destructive', title: t('rules.invalidConfig') })
+          return
         }
-      } catch {
-        toast({ variant: 'destructive', title: 'Error' })
+        
+        // 调用后端导入接口写入数据库
+        const result = await api.config.import(json)
+        if (result && result.success && result.data) {
+          toast({ variant: 'success', title: t('common.import') + ' ' + t('common.success') })
+          setShowImportExport(false)
+          // 刷新配置列表
+          await loadRuleSets()
+          // 选中导入的配置
+          const importedRecord = result.data.config
+          if (importedRecord) {
+            loadRuleSetData(importedRecord)
+          }
+        } else {
+          toast({ variant: 'destructive', title: t('common.import') + ' ' + t('common.failed'), description: result?.message })
+        }
+      } catch (e) {
+        toast({ variant: 'destructive', title: t('common.import') + ' ' + t('common.failed'), description: String(e) })
       }
     }
     reader.readAsText(file)
