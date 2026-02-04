@@ -59,7 +59,7 @@ export function TargetsPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex justify-start">
         <Button variant="outline" size="sm" onClick={onRefresh}>
           <RefreshCw className="w-4 h-4 mr-2" />
           {t('toolbar.refreshTargets')}
