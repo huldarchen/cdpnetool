@@ -197,11 +197,16 @@
     "searchPlaceholder": "Search URL, method, rule name...",
     "clear": "Clear",
     "all": "All",
+    "tabs": {
+      "headers": "Headers",
+      "payload": "Payload",
+      "response": "Response"
+    },
     "sections": {
-      "info": "Information",
-      "rules": "Matched Rules",
-      "request": "Request Details",
-      "response": "Response Details"
+      "general": "General",
+      "responseHeaders": "Response Headers",
+      "requestHeaders": "Request Headers",
+      "rules": "Matched Rules"
     }
   },
   "network": {

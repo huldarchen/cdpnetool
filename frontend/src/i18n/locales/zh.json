@@ -197,11 +197,16 @@
     "searchPlaceholder": "搜索 URL、方法、规则名...",
     "clear": "清空记录",
     "all": "全部",
+    "tabs": {
+      "headers": "标头",
+      "payload": "负载",
+      "response": "响应"
+    },
     "sections": {
-      "info": "基本信息",
-      "rules": "匹配规则",
-      "request": "请求详情",
-      "response": "响应详情"
+      "general": "常规",
+      "responseHeaders": "响应标头",
+      "requestHeaders": "请求标头",
+      "rules": "匹配规则"
     }
   },
   "network": {

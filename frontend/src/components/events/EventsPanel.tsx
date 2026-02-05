@@ -175,12 +175,12 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
   const { networkEvent } = event
   const { request, response, matchedRules, finalResult } = networkEvent
 
-  // 状态管理：默认全部折叠
+  // 状态管理：默认展开常规
   const [collapsed, setCollapsed] = useState({
-    general: true,
+    general: false,
     rules: true,
-    responseHeaders: false,
-    requestHeaders: false,
+    responseHeaders: true,
+    requestHeaders: true,
   })
 
   const toggleSection = (key: keyof typeof collapsed) => {
@@ -261,19 +261,19 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
             value="headers" 
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-background h-9 px-4 text-xs font-medium"
           >
-            {t('events.sections.info')}
+            {t('events.tabs.headers')}
           </TabsTrigger>
           <TabsTrigger 
             value="payload" 
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-background h-9 px-4 text-xs font-medium"
           >
-            Payload
+            {t('events.tabs.payload')}
           </TabsTrigger>
           <TabsTrigger 
             value="response" 
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-background h-9 px-4 text-xs font-medium"
           >
-            {t('common.network')}
+            {t('events.tabs.response')}
           </TabsTrigger>
         </TabsList>
 
@@ -286,9 +286,9 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                   onClick={() => toggleSection('general')}
                   className="w-full flex items-center gap-1 text-[11px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
                 >
-                  {collapsed.general ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} {t('events.sections.info')}
+                  {collapsed.general ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />} {t('events.sections.general')}
                 </button>
-                {collapsed.general && (
+                {!collapsed.general && (
                   <div className="mt-2 ml-4 space-y-1.5 text-xs font-mono">
                     <div className="flex gap-2">
                       <span className="text-muted-foreground min-w-[140px] shrink-0">Request URL:</span>
@@ -322,16 +322,64 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                 )}
               </section>
 
+              {/* 响应标头 */}
+              <section className="border-b border-muted/30 pb-2">
+                <button 
+                  onClick={() => toggleSection('responseHeaders')}
+                  className="w-full flex items-center gap-1 text-[11px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
+                >
+                  {collapsed.responseHeaders ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />} {t('events.sections.responseHeaders')}
+                </button>
+                {!collapsed.responseHeaders && (
+                  <div className="mt-2 ml-4 space-y-1 text-xs font-mono border-l-2 pl-3">
+                    {response?.headers && Object.keys(response.headers).length > 0 ? (
+                      Object.entries(response.headers).map(([k, v]) => (
+                        <div key={k} className="flex gap-2 py-0.5 border-b border-muted/30 last:border-0">
+                          <span className="text-primary font-bold shrink-0">{k}:</span>
+                          <span className="break-all">{v}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-muted-foreground italic">No data</div>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              {/* 请求标头 */}
+              <section className="border-b border-muted/30 pb-2">
+                <button 
+                  onClick={() => toggleSection('requestHeaders')}
+                  className="w-full flex items-center gap-1 text-[11px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
+                >
+                  {collapsed.requestHeaders ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />} {t('events.sections.requestHeaders')}
+                </button>
+                {!collapsed.requestHeaders && (
+                  <div className="mt-2 ml-4 space-y-1 text-xs font-mono border-l-2 pl-3">
+                    {request.headers && Object.keys(request.headers).length > 0 ? (
+                      Object.entries(request.headers).map(([k, v]) => (
+                        <div key={k} className="flex gap-2 py-0.5 border-b border-muted/30 last:border-0">
+                          <span className="text-primary font-bold shrink-0">{k}:</span>
+                          <span className="break-all">{v}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-muted-foreground italic">No data</div>
+                    )}
+                  </div>
+                )}
+              </section>
+
               {/* 匹配规则 */}
               {matchedRules && matchedRules.length > 0 && (
-                <section className="border-b border-muted/30 pb-2">
+                <section className="pb-2">
                   <button 
                     onClick={() => toggleSection('rules')}
                     className="w-full flex items-center gap-1 text-[11px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
                   >
-                    {collapsed.rules ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} {t('events.sections.rules')}
+                    {collapsed.rules ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />} {t('events.sections.rules')}
                   </button>
-                  {collapsed.rules && (
+                  {!collapsed.rules && (
                     <div className="mt-2 ml-4 space-y-2 text-xs">
                       {matchedRules.map((rule, idx) => (
                         <div key={idx} className="p-2 bg-muted/50 rounded-md border flex items-center gap-3">
@@ -349,54 +397,6 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                   )}
                 </section>
               )}
-
-              {/* 响应标头 */}
-              <section className="border-b border-muted/30 pb-2">
-                <button 
-                  onClick={() => toggleSection('responseHeaders')}
-                  className="w-full flex items-center gap-1 text-[11px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
-                >
-                  {collapsed.responseHeaders ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} {t('events.sections.response')}
-                </button>
-                {collapsed.responseHeaders && (
-                  <div className="mt-2 ml-4 space-y-1 text-xs font-mono border-l-2 pl-3">
-                    {response?.headers && Object.keys(response.headers).length > 0 ? (
-                      Object.entries(response.headers).map(([k, v]) => (
-                        <div key={k} className="flex gap-2 py-0.5 border-b border-muted/30 last:border-0">
-                          <span className="text-primary font-bold shrink-0">{k}:</span>
-                          <span className="break-all">{v}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-muted-foreground italic">No data</div>
-                    )}
-                  </div>
-                )}
-              </section>
-
-              {/* 请求标头 */}
-              <section className="pb-2">
-                <button 
-                  onClick={() => toggleSection('requestHeaders')}
-                  className="w-full flex items-center gap-1 text-[11px] font-bold text-muted-foreground uppercase hover:text-foreground transition-colors"
-                >
-                  {collapsed.requestHeaders ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />} {t('events.sections.request')}
-                </button>
-                {collapsed.requestHeaders && (
-                  <div className="mt-2 ml-4 space-y-1 text-xs font-mono border-l-2 pl-3">
-                    {request.headers && Object.keys(request.headers).length > 0 ? (
-                      Object.entries(request.headers).map(([k, v]) => (
-                        <div key={k} className="flex gap-2 py-0.5 border-b border-muted/30 last:border-0">
-                          <span className="text-primary font-bold shrink-0">{k}:</span>
-                          <span className="break-all">{v}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-muted-foreground italic">No data</div>
-                    )}
-                  </div>
-                )}
-              </section>
             </div>
           </ScrollArea>
         </TabsContent>
