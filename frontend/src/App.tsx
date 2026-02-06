@@ -331,6 +331,7 @@ function App() {
                 onToggleCapture={handleToggleTrafficCapture}
                 onClear={clearTrafficEvents}
                 isConnected={isConnected}
+                attachedTargetId={attachedTargetId}
               />
             </div>
           </TabsContent>

@@ -24,6 +24,7 @@ interface NetworkPanelProps {
   onToggleCapture: (enabled: boolean) => void
   onClear?: () => void
   isConnected: boolean
+  attachedTargetId: string | null
 }
 
 export function NetworkPanel({ 
@@ -31,7 +32,8 @@ export function NetworkPanel({
   isCapturing, 
   onToggleCapture, 
   onClear,
-  isConnected
+  isConnected,
+  attachedTargetId
 }: NetworkPanelProps) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
@@ -55,7 +57,7 @@ export function NetworkPanel({
             size="sm"
             variant={isCapturing ? "destructive" : "default"}
             onClick={() => onToggleCapture(!isCapturing)}
-            disabled={!isConnected}
+            disabled={!isConnected || !attachedTargetId}
             className="h-8"
           >
             {isCapturing ? (
