@@ -59,6 +59,11 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    
+    /* 桌面应用体验：禁用文本选择 */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
@@ -79,4 +84,15 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* 允许特定区域选择文本 */
+input,
+textarea,
+pre,
+code,
+[contenteditable="true"],
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
 }

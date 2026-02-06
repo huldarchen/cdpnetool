@@ -268,22 +268,22 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                   <div className="mt-2 ml-4 space-y-1.5 text-xs font-mono">
                     <div className="flex gap-2">
                       <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.requestUrl')}:</span>
-                      <span className="break-all">{request.url}</span>
+                      <span className="break-all selectable">{request.url}</span>
                     </div>
                     <div className="flex gap-2">
                       <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.requestMethod')}:</span>
-                      <span>{request.method}</span>
+                      <span className="selectable">{request.method}</span>
                     </div>
                     {request.resourceType && (
                       <div className="flex gap-2">
                         <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.resourceType')}:</span>
-                        <span className="font-semibold text-blue-600 dark:text-blue-400">{request.resourceType}</span>
+                        <span className="font-semibold text-blue-600 dark:text-blue-400 selectable">{request.resourceType}</span>
                       </div>
                     )}
                     {response && response.statusCode !== undefined && response.statusCode !== null && (
                       <div className="flex gap-2">
                         <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.statusCode')}:</span>
-                        <span className={response.statusCode >= 400 ? 'text-red-500' : 'text-green-500 font-bold'}>
+                        <span className={response.statusCode >= 400 ? 'text-red-500 selectable' : 'text-green-500 font-bold selectable'}>
                           {response.statusCode}
                         </span>
                       </div>
@@ -291,13 +291,13 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                     {finalResult && (
                       <div className="flex gap-2">
                         <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.finalResult')}:</span>
-                        <span className="font-bold">{FINAL_RESULT_LABELS[finalResult as FinalResultType] || finalResult}</span>
+                        <span className="font-bold selectable">{FINAL_RESULT_LABELS[finalResult as FinalResultType] || finalResult}</span>
                       </div>
                     )}
                     {networkEvent.target && (
                       <div className="flex gap-2">
                         <span className="text-muted-foreground min-w-[140px] shrink-0">{t('events.fields.targetId')}:</span>
-                        <span className="text-muted-foreground truncate">{networkEvent.target}</span>
+                        <span className="text-muted-foreground truncate selectable">{networkEvent.target}</span>
                       </div>
                     )}
                   </div>
@@ -317,8 +317,8 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                     {response?.headers && Object.keys(response.headers).length > 0 ? (
                       Object.entries(response.headers).map(([k, v]) => (
                         <div key={k} className="flex gap-2 py-0.5 border-b border-muted/30 last:border-0">
-                          <span className="text-primary font-bold shrink-0">{k}:</span>
-                          <span className="break-all">{v}</span>
+                          <span className="text-primary font-bold shrink-0 selectable">{k}:</span>
+                          <span className="break-all selectable">{v}</span>
                         </div>
                       ))
                     ) : (
@@ -341,8 +341,8 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                     {request.headers && Object.keys(request.headers).length > 0 ? (
                       Object.entries(request.headers).map(([k, v]) => (
                         <div key={k} className="flex gap-2 py-0.5 border-b border-muted/30 last:border-0">
-                          <span className="text-primary font-bold shrink-0">{k}:</span>
-                          <span className="break-all">{v}</span>
+                          <span className="text-primary font-bold shrink-0 selectable">{k}:</span>
+                          <span className="break-all selectable">{v}</span>
                         </div>
                       ))
                     ) : (
