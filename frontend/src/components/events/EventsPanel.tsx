@@ -139,7 +139,7 @@ function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
         {t('rules.ruleCount', { count: filteredEvents.length })} {search && `(${t('common.refresh')})`}
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-auto">
         <div className="space-y-2 pr-4">
           {filteredEvents.map((evt) => (
             <MatchedEventItem
@@ -150,7 +150,7 @@ function MatchedEventsList({ events, onClear }: MatchedEventsListProps) {
             />
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }
@@ -254,7 +254,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
         </TabsList>
 
         <TabsContent value="headers" className="m-0">
-          <ScrollArea className="max-h-[500px]">
+          <div className="max-h-[400px] overflow-auto">
             <div className="p-4 space-y-2">
               {/* 常规 (General) */}
               <section className="border-b border-muted/30 pb-2">
@@ -380,7 +380,7 @@ function EventDetailView({ event }: { event: MatchedEventWithId }) {
                 </section>
               )}
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
 
         <TabsContent value="payload" className="m-0">

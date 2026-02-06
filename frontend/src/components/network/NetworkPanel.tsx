@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { 
   Search, 
   X,
@@ -100,7 +99,7 @@ export function NetworkPanel({
         <div>Time</div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-auto">
         <div className="divide-y border-b">
           {filteredEvents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
@@ -118,7 +117,7 @@ export function NetworkPanel({
             ))
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

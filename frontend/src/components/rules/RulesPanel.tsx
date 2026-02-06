@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
 import { useSessionStore } from '@/stores'
@@ -466,9 +465,8 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                 </Button>
               </div>
             </div>
-            <ScrollArea className="flex-1">
-              <div className="p-2 space-y-1">
-                {ruleSets.map((config) => (
+            <div className="flex-1 overflow-auto p-2 space-y-1">
+              {ruleSets.map((config) => (
                   <div
                     key={config.id}
                     className={`flex items-center gap-2 p-2 rounded-md cursor-pointer transition-colors ${
@@ -506,8 +504,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                     )}
                   </div>
                 ))}
-              </div>
-            </ScrollArea>
+            </div>
           </div>
 
           <div className="flex-1 flex flex-col min-h-0 p-4">
@@ -636,12 +633,12 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
                       )}
                     </div>
                   ) : (
-                    <ScrollArea className="flex-1 pr-4">
+                    <div className="flex-1 overflow-auto pr-4">
                       <RuleListEditor
                         rules={ruleSet.rules}
                         onChange={handleRulesChange}
                       />
-                    </ScrollArea>
+                    </div>
                   )}
                 </div>
               </>

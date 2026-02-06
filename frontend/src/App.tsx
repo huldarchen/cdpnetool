@@ -293,14 +293,12 @@ function App() {
           </TabsContent>
 
           <TabsContent value="rules" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
-            <div className="h-full overflow-hidden">
-              <RulesPanel 
-                sessionId={sessionId}
-                isConnected={isConnected}
-                attachedTargetId={attachedTargetId}
-                setIntercepting={setIntercepting}
-              />
-            </div>
+            <RulesPanel 
+              sessionId={sessionId}
+              isConnected={isConnected}
+              attachedTargetId={attachedTargetId}
+              setIntercepting={setIntercepting}
+            />
           </TabsContent>
 
           <TabsContent value="events" className="flex-1 overflow-hidden m-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
