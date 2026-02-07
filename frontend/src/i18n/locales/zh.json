@@ -30,7 +30,8 @@
     "devtoolsUrlPlaceholder": "DevTools URL (例如 http://localhost:9222)",
     "refreshTargets": "刷新目标列表",
     "toggleTheme": "切换主题",
-    "toggleLanguage": "切换语言"
+    "toggleLanguage": "切换语言",
+    "settings": "设置"
   },
   "status": {
     "browserConnected": "浏览器连接",
@@ -255,5 +256,38 @@
     "BROWSER_START_FAILED": "浏览器启动失败，请检查系统是否安装了 Chrome 或 Edge",
     "DATABASE_ERROR": "数据库错误，请重启应用",
     "UNKNOWN_ERROR": "未知错误"
+  },
+  "settings": {
+    "title": "系统设置",
+    "description": "配置应用的基本设置和浏览器参数",
+    "save": "保存",
+    "saving": "保存中...",
+    "cancel": "取消",
+    "resetToDefault": "恢复默认",
+    "loadFailed": "加载设置失败",
+    "saveSuccess": "设置保存成功",
+    "saveFailed": "保存设置失败",
+    "resetSuccess": "已恢复默认设置",
+    "resetFailed": "恢复默认设置失败",
+    "selectFileFailed": "选择文件失败",
+    "general": {
+      "title": "通用设置",
+      "language": "语言",
+      "theme": "主题",
+      "themeLight": "浅色",
+      "themeDark": "深色",
+      "themeSystem": "跟随系统"
+    },
+    "browser": {
+      "title": "浏览器设置",
+      "devtoolsUrl": "DevTools URL",
+      "devtoolsUrlDesc": "浏览器远程调试地址，默认 http://localhost:9222",
+      "args": "额外启动参数",
+      "argsDesc": "浏览器启动时的额外命令行参数，空表示无额外参数",
+      "path": "浏览器路径",
+      "pathPlaceholder": "空表示自动检测系统浏览器",
+      "pathDesc": "浏览器可执行文件的完整路径，空表示自动检测",
+      "selectFile": "选择文件"
+    }
   }
 }

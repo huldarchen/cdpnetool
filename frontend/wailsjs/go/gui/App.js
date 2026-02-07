@@ -74,6 +74,10 @@ export function GetSetting(arg1) {
   return window['go']['gui']['App']['GetSetting'](arg1);
 }
 
+export function GetSettings() {
+  return window['go']['gui']['App']['GetSettings']();
+}
+
 export function GetVersion() {
   return window['go']['gui']['App']['GetVersion']();
 }
@@ -110,8 +114,20 @@ export function RenameConfig(arg1, arg2) {
   return window['go']['gui']['App']['RenameConfig'](arg1, arg2);
 }
 
+export function ResetSettings() {
+  return window['go']['gui']['App']['ResetSettings']();
+}
+
 export function SaveConfig(arg1, arg2) {
   return window['go']['gui']['App']['SaveConfig'](arg1, arg2);
+}
+
+export function SaveSettings(arg1) {
+  return window['go']['gui']['App']['SaveSettings'](arg1);
+}
+
+export function SelectBrowserPath() {
+  return window['go']['gui']['App']['SelectBrowserPath']();
 }
 
 export function SetActiveConfig(arg1) {

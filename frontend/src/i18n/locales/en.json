@@ -30,7 +30,8 @@
     "devtoolsUrlPlaceholder": "DevTools URL (e.g., http://localhost:9222)",
     "refreshTargets": "Refresh Targets",
     "toggleTheme": "Toggle Theme",
-    "toggleLanguage": "Toggle Language"
+    "toggleLanguage": "Toggle Language",
+    "settings": "Settings"
   },
   "status": {
     "browserConnected": "Browser Connect",
@@ -255,5 +256,38 @@
     "BROWSER_START_FAILED": "Failed to start browser, please check if Chrome or Edge is installed",
     "DATABASE_ERROR": "Database error, please restart the application",
     "UNKNOWN_ERROR": "Unknown error"
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Configure application settings and browser parameters",
+    "save": "Save",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "resetToDefault": "Reset to Default",
+    "loadFailed": "Failed to load settings",
+    "saveSuccess": "Settings saved successfully",
+    "saveFailed": "Failed to save settings",
+    "resetSuccess": "Settings reset to default",
+    "resetFailed": "Failed to reset settings",
+    "selectFileFailed": "Failed to select file",
+    "general": {
+      "title": "General",
+      "language": "Language",
+      "theme": "Theme",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "themeSystem": "Follow System"
+    },
+    "browser": {
+      "title": "Browser",
+      "devtoolsUrl": "DevTools URL",
+      "devtoolsUrlDesc": "Remote debugging URL for browser, default is http://localhost:9222",
+      "args": "Extra Launch Args",
+      "argsDesc": "Additional command-line arguments for browser launch, empty means no extra args",
+      "path": "Browser Path",
+      "pathPlaceholder": "Empty means auto-detect system browser",
+      "pathDesc": "Full path to browser executable, empty means auto-detect",
+      "selectFile": "Select File"
+    }
   }
 }

@@ -47,10 +47,10 @@ export const api = {
   // 设置与系统
   system: {
     getVersion: App.GetVersion,
-    getSettings: App.GetAllSettings,
-    getSetting: App.GetSetting,
-    setSetting: App.SetSetting,
-    setMultipleSettings: App.SetMultipleSettings,
+    getSettings: App.GetSettings,
+    saveSettings: App.SaveSettings,
+    resetSettings: App.ResetSettings,
+    selectBrowserPath: App.SelectBrowserPath,
   },
   
   // 历史记录

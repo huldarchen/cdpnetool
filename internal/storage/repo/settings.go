@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"cdpnetool/internal/config"
 	"cdpnetool/internal/storage/model"
 
 	"gorm.io/gorm"
@@ -115,4 +116,58 @@ func (r *SettingsRepo) GetLastConfigID(ctx context.Context) string {
 // SetLastConfigID 设置上次使用的配置 ID
 func (r *SettingsRepo) SetLastConfigID(ctx context.Context, id string) error {
 	return r.Set(ctx, model.SettingKeyLastConfigID, id)
+}
+
+// GetAllWithDefaults 获取所有设置（不存在的使用默认值）
+func (r *SettingsRepo) GetAllWithDefaults(ctx context.Context) (map[string]string, error) {
+	settings, err := r.GetAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	defaults := config.GetDefaultSettings()
+	result := map[string]string{
+		model.SettingKeyLanguage:    defaults.Language,
+		model.SettingKeyTheme:       defaults.Theme,
+		model.SettingKeyDevToolsURL: defaults.DevToolsURL,
+		model.SettingKeyBrowserArgs: defaults.BrowserArgs,
+		model.SettingKeyBrowserPath: defaults.BrowserPath,
+	}
+
+	// 用数据库中的值覆盖默认值
+	for k, v := range settings {
+		result[k] = v
+	}
+
+	return result, nil
+}
+
+// GetLanguage 获取语言设置
+func (r *SettingsRepo) GetLanguage(ctx context.Context) string {
+	return r.GetWithDefault(ctx, model.SettingKeyLanguage, config.GetDefaultSettings().Language)
+}
+
+// SetLanguage 设置语言
+func (r *SettingsRepo) SetLanguage(ctx context.Context, lang string) error {
+	return r.Set(ctx, model.SettingKeyLanguage, lang)
+}
+
+// GetBrowserArgs 获取浏览器启动参数
+func (r *SettingsRepo) GetBrowserArgs(ctx context.Context) string {
+	return r.GetWithDefault(ctx, model.SettingKeyBrowserArgs, config.GetDefaultSettings().BrowserArgs)
+}
+
+// SetBrowserArgs 设置浏览器启动参数
+func (r *SettingsRepo) SetBrowserArgs(ctx context.Context, args string) error {
+	return r.Set(ctx, model.SettingKeyBrowserArgs, args)
+}
+
+// GetBrowserPath 获取浏览器可执行文件路径
+func (r *SettingsRepo) GetBrowserPath(ctx context.Context) string {
+	return r.GetWithDefault(ctx, model.SettingKeyBrowserPath, config.GetDefaultSettings().BrowserPath)
+}
+
+// SetBrowserPath 设置浏览器可执行文件路径
+func (r *SettingsRepo) SetBrowserPath(ctx context.Context, path string) error {
+	return r.Set(ctx, model.SettingKeyBrowserPath, path)
 }

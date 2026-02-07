@@ -188,25 +188,61 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 }))
 
 // 主题状态
+type ThemeMode = 'light' | 'dark' | 'system'
+
 interface ThemeState {
-  isDark: boolean
-  toggle: () => void
+  mode: ThemeMode
+  isDark: boolean  // 实际应用的主题（考虑 system 后的结果）
+  setMode: (mode: ThemeMode) => void
 }
 
-export const useThemeStore = create<ThemeState>((set) => ({
-  isDark: true,
-  toggle: () => set((state) => {
-    const newIsDark = !state.isDark
-    if (newIsDark) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-    return { isDark: newIsDark }
-  }),
-}))
+// 检测系统主题
+function getSystemTheme(): boolean {
+  if (typeof window === 'undefined') return true
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+
+// 应用主题到 DOM
+function applyTheme(isDark: boolean) {
+  if (isDark) {
+    document.documentElement.classList.add('dark')
+  } else {
+    document.documentElement.classList.remove('dark')
+  }
+}
+
+export const useThemeStore = create<ThemeState>((set, get) => {
+  // 初始化：默认 system 模式
+  const initialMode: ThemeMode = 'system'
+  const systemIsDark = getSystemTheme()
+  const initialIsDark = initialMode === 'system' ? systemIsDark : initialMode === 'dark'
+  
+  // 监听系统主题变化
+  if (typeof window !== 'undefined') {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    mediaQuery.addEventListener('change', (e) => {
+      const { mode } = get()
+      if (mode === 'system') {
+        const newIsDark = e.matches
+        set({ isDark: newIsDark })
+        applyTheme(newIsDark)
+      }
+    })
+  }
+  
+  return {
+    mode: initialMode,
+    isDark: initialIsDark,
+    setMode: (mode: ThemeMode) => {
+      const newIsDark = mode === 'system' ? getSystemTheme() : mode === 'dark'
+      set({ mode, isDark: newIsDark })
+      applyTheme(newIsDark)
+    },
+  }
+})
 
 // 初始化主题
 if (typeof window !== 'undefined') {
-  document.documentElement.classList.add('dark')
+  const systemIsDark = getSystemTheme()
+  applyTheme(systemIsDark)
 }

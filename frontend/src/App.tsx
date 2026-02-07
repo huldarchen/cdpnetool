@@ -5,24 +5,24 @@ import { Input } from '@/components/ui/input'
 import { Toaster } from '@/components/ui/toaster'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { useToast } from '@/hooks/use-toast'
-import { useSessionStore, useThemeStore } from '@/stores'
+import { useSessionStore } from '@/stores'
 import { EventsPanel } from '@/components/events'
 import { NetworkPanel } from '@/components/network/NetworkPanel'
 import { TargetsPanel } from '@/components/targets/TargetsPanel'
 import { RulesPanel } from '@/components/rules/RulesPanel'
+import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { api } from '@/api'
 import { useTranslation } from 'react-i18next'
 import { getErrorMessage } from '@/lib/error-handler'
 import { 
-  Moon, 
-  Sun,
   Link2,
   Link2Off,
   FileJson,
   Activity,
   Chrome,
   Languages,
-  Bug
+  Bug,
+  Settings
 } from 'lucide-react'
 
 function App() {
@@ -53,12 +53,12 @@ function App() {
     setLanguage
   } = useSessionStore()
   
-  const { isDark, toggle: toggleTheme } = useThemeStore()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [isLaunchingBrowser, setIsLaunchingBrowser] = useState(false)
   const [appVersion, setAppVersion] = useState('')
   const [activeTab, setActiveTab] = useState('targets')
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   // 监听 Tab 切换，离开请求预览时自动停止捕获
   const handleTabChange = async (value: string) => {
@@ -263,8 +263,8 @@ function App() {
           <Button variant="ghost" size="icon" onClick={handleToggleLanguage} title={t('toolbar.toggleLanguage')}>
             <Languages className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={toggleTheme} title={t('toolbar.toggleTheme')}>
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)} title={t('toolbar.settings')}>
+            <Settings className="w-4 h-4" />
           </Button>
         </div>
       </div>
@@ -345,6 +345,7 @@ function App() {
       </div>
       
       <Toaster />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   )
 }

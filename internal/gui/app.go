@@ -716,3 +716,66 @@ func (a *App) CleanupEventHistory(retentionDays int) api.Response[api.EmptyData]
 func (a *App) GetVersion() api.Response[VersionData] {
 	return api.OK(VersionData{Version: a.cfg.Version})
 }
+
+// GetSettings 获取所有设置（带默认值）
+func (a *App) GetSettings() api.Response[SettingsData] {
+	ctx := context.Background()
+	settings, err := a.settingsRepo.GetAllWithDefaults(ctx)
+	if err != nil {
+		return api.Fail[SettingsData]("GET_SETTINGS_FAILED", "获取设置失败")
+	}
+	return api.OK(SettingsData{Settings: settings})
+}
+
+// SaveSettings 保存设置
+func (a *App) SaveSettings(settings map[string]string) api.Response[api.EmptyData] {
+	ctx := context.Background()
+	err := a.settingsRepo.SetMultiple(ctx, settings)
+	if err != nil {
+		return api.Fail[api.EmptyData]("SAVE_SETTINGS_FAILED", "保存设置失败")
+	}
+	return api.OK(api.EmptyData{})
+}
+
+// ResetSettings 恢复默认设置
+func (a *App) ResetSettings() api.Response[SettingsData] {
+	ctx := context.Background()
+	defaults := config.GetDefaultSettings()
+
+	settings := map[string]string{
+		model.SettingKeyLanguage:    defaults.Language,
+		model.SettingKeyTheme:       defaults.Theme,
+		model.SettingKeyDevToolsURL: defaults.DevToolsURL,
+		model.SettingKeyBrowserArgs: defaults.BrowserArgs,
+		model.SettingKeyBrowserPath: defaults.BrowserPath,
+	}
+
+	err := a.settingsRepo.SetMultiple(ctx, settings)
+	if err != nil {
+		return api.Fail[SettingsData]("RESET_SETTINGS_FAILED", "恢复默认设置失败")
+	}
+
+	return api.OK(SettingsData{Settings: settings})
+}
+
+// SelectBrowserPath 打开系统文件选择器，选择浏览器可执行文件
+func (a *App) SelectBrowserPath() api.Response[SettingData] {
+	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择浏览器可执行文件",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "可执行文件", Pattern: "*.exe"},
+			{DisplayName: "所有文件", Pattern: "*.*"},
+		},
+	})
+
+	if err != nil {
+		return api.Fail[SettingData]("SELECT_FILE_FAILED", "选择文件失败")
+	}
+
+	// 用户取消选择
+	if filePath == "" {
+		return api.Fail[SettingData]("CANCELLED", "用户取消")
+	}
+
+	return api.OK(SettingData{Value: filePath})
+}
