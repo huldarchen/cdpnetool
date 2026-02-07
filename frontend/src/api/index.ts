@@ -51,6 +51,9 @@ export const api = {
     saveSettings: App.SaveSettings,
     resetSettings: App.ResetSettings,
     selectBrowserPath: App.SelectBrowserPath,
+    openDirectory: App.OpenDirectory,
+    getLogDirectory: App.GetLogDirectory,
+    getDataDirectory: App.GetDataDirectory,
   },
   
   // 历史记录

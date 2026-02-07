@@ -34,6 +34,10 @@ export function GetConfig(arg1:number):Promise<api.Response_cdpnetool_internal_g
 
 export function GetCurrentSession():Promise<api.Response_cdpnetool_internal_gui_SessionData_>;
 
+export function GetDataDirectory():Promise<api.Response_cdpnetool_internal_gui_SettingData_>;
+
+export function GetLogDirectory():Promise<api.Response_cdpnetool_internal_gui_SettingData_>;
+
 export function GetRuleStats(arg1:string):Promise<api.Response_cdpnetool_internal_gui_StatsData_>;
 
 export function GetSetting(arg1:string):Promise<api.Response_cdpnetool_internal_gui_SettingData_>;
@@ -53,6 +57,8 @@ export function ListTargets(arg1:string):Promise<api.Response_cdpnetool_internal
 export function LoadActiveConfigToSession():Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
 export function LoadRules(arg1:string,arg2:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
+
+export function OpenDirectory(arg1:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
 export function QueryMatchedEventHistory(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:number,arg7:number,arg8:number):Promise<api.Response_cdpnetool_internal_gui_EventHistoryData_>;
 

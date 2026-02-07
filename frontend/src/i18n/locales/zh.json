@@ -288,6 +288,21 @@
       "pathPlaceholder": "空表示自动检测系统浏览器",
       "pathDesc": "浏览器可执行文件的完整路径，空表示自动检测",
       "selectFile": "选择文件"
+    },
+    "advanced": {
+      "title": "高级设置",
+      "logLevel": "日志级别",
+      "logLevelDebug": "Debug",
+      "logLevelInfo": "Info",
+      "logLevelWarn": "Warn",
+      "logLevelError": "Error",
+      "networkTimeout": "网络超时",
+      "networkTimeoutDesc": "网络请求的超时时间（秒）",
+      "logDirectory": "日志目录",
+      "logDirectoryDesc": "应用日志文件的存储位置（只读）",
+      "dataDirectory": "数据目录",
+      "dataDirectoryDesc": "数据库文件的存储位置（只读）",
+      "openFolder": "打开文件夹"
     }
   }
 }

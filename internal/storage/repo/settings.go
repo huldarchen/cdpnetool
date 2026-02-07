@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"cdpnetool/internal/config"
@@ -127,11 +128,13 @@ func (r *SettingsRepo) GetAllWithDefaults(ctx context.Context) (map[string]strin
 
 	defaults := config.GetDefaultSettings()
 	result := map[string]string{
-		model.SettingKeyLanguage:    defaults.Language,
-		model.SettingKeyTheme:       defaults.Theme,
-		model.SettingKeyDevToolsURL: defaults.DevToolsURL,
-		model.SettingKeyBrowserArgs: defaults.BrowserArgs,
-		model.SettingKeyBrowserPath: defaults.BrowserPath,
+		model.SettingKeyLanguage:       defaults.Language,
+		model.SettingKeyTheme:          defaults.Theme,
+		model.SettingKeyDevToolsURL:    defaults.DevToolsURL,
+		model.SettingKeyBrowserArgs:    defaults.BrowserArgs,
+		model.SettingKeyBrowserPath:    defaults.BrowserPath,
+		model.SettingKeyLogLevel:       defaults.LogLevel,
+		model.SettingKeyNetworkTimeout: strconv.Itoa(defaults.NetworkTimeout),
 	}
 
 	// 用数据库中的值覆盖默认值

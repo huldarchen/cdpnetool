@@ -14,8 +14,8 @@ import (
 func setupTestDB(t *testing.T) *repo.ConfigRepo {
 	// 使用内存数据库，速度快且隔离性好
 	gdb, err := db.New(db.Options{
-		FullPath: ":memory:",
-		Prefix:   "test_",
+		Name:   ":memory:",
+		Prefix: "test_",
 	})
 	if err != nil {
 		t.Fatalf("创建内存数据库失败: %v", err)

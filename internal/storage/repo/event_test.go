@@ -15,8 +15,8 @@ import (
 // setupEventTestDB 创建用于 EventRepo 测试的内存数据库。
 func setupEventTestDB(t *testing.T) *repo.EventRepo {
 	gdb, err := db.New(db.Options{
-		FullPath: ":memory:",
-		Prefix:   "test_",
+		Name:   ":memory:",
+		Prefix: "test_",
 	})
 	if err != nil {
 		t.Fatalf("创建内存数据库失败: %v", err)

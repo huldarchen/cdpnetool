@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
 	"time"
 
 	"cdpnetool/internal/browser"
@@ -743,11 +745,13 @@ func (a *App) ResetSettings() api.Response[SettingsData] {
 	defaults := config.GetDefaultSettings()
 
 	settings := map[string]string{
-		model.SettingKeyLanguage:    defaults.Language,
-		model.SettingKeyTheme:       defaults.Theme,
-		model.SettingKeyDevToolsURL: defaults.DevToolsURL,
-		model.SettingKeyBrowserArgs: defaults.BrowserArgs,
-		model.SettingKeyBrowserPath: defaults.BrowserPath,
+		model.SettingKeyLanguage:       defaults.Language,
+		model.SettingKeyTheme:          defaults.Theme,
+		model.SettingKeyDevToolsURL:    defaults.DevToolsURL,
+		model.SettingKeyBrowserArgs:    defaults.BrowserArgs,
+		model.SettingKeyBrowserPath:    defaults.BrowserPath,
+		model.SettingKeyLogLevel:       defaults.LogLevel,
+		model.SettingKeyNetworkTimeout: strconv.Itoa(defaults.NetworkTimeout),
 	}
 
 	err := a.settingsRepo.SetMultiple(ctx, settings)
@@ -778,4 +782,32 @@ func (a *App) SelectBrowserPath() api.Response[SettingData] {
 	}
 
 	return api.OK(SettingData{Value: filePath})
+}
+
+// OpenDirectory 打开指定目录
+func (a *App) OpenDirectory(path string) api.Response[api.EmptyData] {
+	cmd := exec.Command("explorer", path)
+	err := cmd.Start()
+	if err != nil {
+		return api.Fail[api.EmptyData]("OPEN_DIRECTORY_FAILED", "打开目录失败")
+	}
+	return api.OK(api.EmptyData{})
+}
+
+// GetDataDirectory 获取数据目录路径
+func (a *App) GetDataDirectory() api.Response[SettingData] {
+	dataDir, err := db.GetDefaultDir()
+	if err != nil {
+		return api.Fail[SettingData]("GET_DATA_DIR_FAILED", "获取数据目录失败")
+	}
+	return api.OK(SettingData{Value: dataDir})
+}
+
+// GetLogDirectory 获取日志目录路径
+func (a *App) GetLogDirectory() api.Response[SettingData] {
+	logDir, err := logger.GetDefaultLogDir()
+	if err != nil {
+		return api.Fail[SettingData]("GET_LOG_DIR_FAILED", "获取日志目录失败")
+	}
+	return api.OK(SettingData{Value: logDir})
 }

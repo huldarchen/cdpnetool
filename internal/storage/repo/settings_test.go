@@ -12,8 +12,8 @@ import (
 // setupSettingsTestDB 创建用于 SettingsRepo 测试的内存数据库。
 func setupSettingsTestDB(t *testing.T) *repo.SettingsRepo {
 	gdb, err := db.New(db.Options{
-		FullPath: ":memory:",
-		Prefix:   "test_",
+		Name:   ":memory:",
+		Prefix: "test_",
 	})
 	if err != nil {
 		t.Fatalf("创建内存数据库失败: %v", err)

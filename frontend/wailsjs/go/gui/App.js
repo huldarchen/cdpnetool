@@ -66,6 +66,14 @@ export function GetCurrentSession() {
   return window['go']['gui']['App']['GetCurrentSession']();
 }
 
+export function GetDataDirectory() {
+  return window['go']['gui']['App']['GetDataDirectory']();
+}
+
+export function GetLogDirectory() {
+  return window['go']['gui']['App']['GetLogDirectory']();
+}
+
 export function GetRuleStats(arg1) {
   return window['go']['gui']['App']['GetRuleStats'](arg1);
 }
@@ -104,6 +112,10 @@ export function LoadActiveConfigToSession() {
 
 export function LoadRules(arg1, arg2) {
   return window['go']['gui']['App']['LoadRules'](arg1, arg2);
+}
+
+export function OpenDirectory(arg1) {
+  return window['go']['gui']['App']['OpenDirectory'](arg1);
 }
 
 export function QueryMatchedEventHistory(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
