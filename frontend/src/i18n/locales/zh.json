@@ -286,6 +286,17 @@
       "pathPlaceholder": "空表示自动检测系统浏览器",
       "pathDesc": "浏览器可执行文件的完整路径，空表示自动检测",
       "selectFile": "选择文件"
+    },
+    "about": {
+      "title": "关于",
+      "appName": "cdpnetool",
+      "version": "版本",
+      "author": "作者",
+      "github": "GitHub",
+      "logDirectory": "打开日志目录",
+      "dataDirectory": "打开数据目录",
+      "openFolder": "打开文件夹",
+      "close": "关闭"
     }
   }
 }

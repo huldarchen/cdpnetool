@@ -286,6 +286,17 @@
       "pathPlaceholder": "Empty means auto-detect system browser",
       "pathDesc": "Full path to browser executable, empty means auto-detect",
       "selectFile": "Select File"
+    },
+    "about": {
+      "title": "About",
+      "appName": "cdpnetool",
+      "version": "Version",
+      "author": "Author",
+      "github": "GitHub",
+      "logDirectory": "Open Log Directory",
+      "dataDirectory": "Open Data Directory",
+      "openFolder": "Open Folder",
+      "close": "Close"
     }
   }
 }

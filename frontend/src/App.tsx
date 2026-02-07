@@ -11,6 +11,7 @@ import { NetworkPanel } from '@/components/network/NetworkPanel'
 import { TargetsPanel } from '@/components/targets/TargetsPanel'
 import { RulesPanel } from '@/components/rules/RulesPanel'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { AboutDialog } from '@/components/about'
 import { api } from '@/api'
 import { useTranslation } from 'react-i18next'
 import { getErrorMessage } from '@/lib/error-handler'
@@ -22,7 +23,8 @@ import {
   Chrome,
   Languages,
   Bug,
-  Settings
+  Settings,
+  Info
 } from 'lucide-react'
 
 function App() {
@@ -59,6 +61,7 @@ function App() {
   const [appVersion, setAppVersion] = useState('')
   const [activeTab, setActiveTab] = useState('targets')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
 
   // 监听 Tab 切换，离开请求预览时自动停止捕获
   const handleTabChange = async (value: string) => {
@@ -339,6 +342,15 @@ function App() {
       </div>
       
       <div className="h-6 border-t px-4 flex items-center text-xs text-muted-foreground shrink-0">
+        <Button 
+          variant="ghost" 
+          size="icon"
+          className="h-5 w-5 p-0 mr-2"
+          onClick={() => setAboutOpen(true)}
+          title={t('settings.about.title')}
+        >
+          <Info className="w-3.5 h-3.5" />
+        </Button>
         <span>cdpnetool v{appVersion}</span>
         <span className="mx-2">|</span>
         <span>Session: {sessionId?.slice(0, 8) || '-'}</span>
@@ -346,6 +358,7 @@ function App() {
       
       <Toaster />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
     </div>
   )
 }
