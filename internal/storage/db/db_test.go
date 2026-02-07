@@ -2,7 +2,6 @@ package db_test
 
 import (
 	"cdpnetool/internal/storage/db"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -13,22 +12,17 @@ type TestModel struct {
 	Name string `gorm:"size:255"`
 }
 
-// TestGetDefaultPath 测试数据库默认存储路径的生成逻辑。
-// 验证路径是否包含应用名称，并以指定的数据库文件名结尾。
-func TestGetDefaultPath(t *testing.T) {
-	t.Run("Generate Path", func(t *testing.T) {
-		dbName := "test_db.db"
-		path, err := db.GetDefaultPath(dbName)
+// TestGetDefaultDir 测试数据库默认目录的生成逻辑。
+// 验证路径是否包含应用名称。
+func TestGetDefaultDir(t *testing.T) {
+	t.Run("生成目录", func(t *testing.T) {
+		dir, err := db.GetDefaultDir()
 		if err != nil {
-			t.Fatalf("获取默认路径失败: %v", err)
+			t.Fatalf("获取默认目录失败: %v", err)
 		}
 
-		if !strings.HasSuffix(path, dbName) {
-			t.Errorf("路径 %s 不是以 %s 结尾", path, dbName)
-		}
-
-		if !strings.Contains(path, "cdpnetool") {
-			t.Errorf("路径 %s 不包含应用名称 'cdpnetool'", path)
+		if !strings.Contains(dir, "cdpnetool") {
+			t.Errorf("目录 %s 不包含应用名称 'cdpnetool'", dir)
 		}
 	})
 }
@@ -37,11 +31,11 @@ func TestGetDefaultPath(t *testing.T) {
 // 验证表前缀配置、SingularTable 策略以及基本的数据读写。
 func TestDatabaseInitialization(t *testing.T) {
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "unit_test.db")
 
 	opts := db.Options{
-		FullPath: dbPath,
-		Prefix:   "test_",
+		Name:   "unit_test.db",
+		Dir:    tempDir,
+		Prefix: "test_",
 	}
 
 	// 1. 测试数据库连接创建

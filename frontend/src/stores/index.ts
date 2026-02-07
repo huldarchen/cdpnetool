@@ -1,19 +1,11 @@
 import { create } from 'zustand'
 import type { 
   NetworkEvent,
-  MatchedEventWithId, 
-  UnmatchedEventWithId 
+  MatchedEventWithId 
 } from '@/types/events'
-
-// 类型定义
-export interface TargetInfo {
-  id: string
-  type: string
-  url: string
-  title: string
-  isCurrent: boolean
-  isUser: boolean
-}
+import { api } from '@/api'
+import { domain } from '../../wailsjs/go/models'
+import i18n from '@/i18n'
 
 // Session 状态
 interface SessionState {
@@ -22,25 +14,34 @@ interface SessionState {
   isConnected: boolean
   isIntercepting: boolean
   activeConfigId: number | null
-  targets: TargetInfo[]
+  targets: domain.TargetInfo[]
   attachedTargetId: string | null
   matchedEvents: MatchedEventWithId[]    // 匹配的事件（会存入数据库）
-  unmatchedEvents: UnmatchedEventWithId[] // 未匹配的事件（仅内存）
+  isTrafficCapturing: boolean           // 是否正在捕获全量流量
+  trafficEvents: NetworkEvent[]         // 全量流量列表（仅内存，最近100条）
+  language: string                      // 当前语言
   
   // Actions
   setDevToolsURL: (url: string) => void
   setCurrentSession: (id: string | null) => void
   setConnected: (connected: boolean) => void
   setIntercepting: (intercepting: boolean) => void
+  setTrafficCapturing: (capturing: boolean) => void
   setActiveConfigId: (id: number | null) => void
-  setTargets: (targets: TargetInfo[]) => void
+  setTargets: (targets: domain.TargetInfo[]) => void
   setAttachedTargetId: (targetId: string | null) => void
   resetSession: () => void
+  setLanguage: (lang: string) => void
+  
+  // 复杂业务 Actions
+  refreshTargets: () => Promise<void>
+  toggleTarget: (targetId: string) => Promise<{ success: boolean; message?: string }>
   
   // 事件操作
   addInterceptEvent: (event: NetworkEvent) => void
+  addTrafficEvent: (event: NetworkEvent) => void
   clearMatchedEvents: () => void
-  clearUnmatchedEvents: () => void
+  clearTrafficEvents: () => void
   clearAllEvents: () => void
 }
 
@@ -49,7 +50,7 @@ function generateEventId(timestamp: number): string {
   return `${timestamp}_${Math.random().toString(36).slice(2, 10)}`
 }
 
-export const useSessionStore = create<SessionState>((set) => ({
+export const useSessionStore = create<SessionState>((set, get) => ({
   currentSessionId: null,
   devToolsURL: 'http://localhost:9222',
   isConnected: false,
@@ -58,29 +59,105 @@ export const useSessionStore = create<SessionState>((set) => ({
   targets: [],
   attachedTargetId: null,
   matchedEvents: [],
-  unmatchedEvents: [],
+  isTrafficCapturing: false,
+  trafficEvents: [],
+  language: 'zh',
   
   setDevToolsURL: (url) => set({ devToolsURL: url }),
   setCurrentSession: (id) => set({ currentSessionId: id }),
   setConnected: (connected) => set({ isConnected: connected }),
   setIntercepting: (intercepting) => set({ isIntercepting: intercepting }),
+  setTrafficCapturing: (capturing) => set({ isTrafficCapturing: capturing }),
   setActiveConfigId: (id) => set({ activeConfigId: id }),
   setTargets: (targets) => set({ targets }),
   setAttachedTargetId: (targetId) => set({ attachedTargetId: targetId }),
+  setLanguage: (lang) => {
+    i18n.changeLanguage(lang)
+    set({ language: lang })
+  },
 
   resetSession: () => set({
     attachedTargetId: null,
     activeConfigId: null,
     isIntercepting: false,
+    isTrafficCapturing: false,
     targets: [],
+    trafficEvents: [],
   }),
+
+  // 刷新目标列表
+  refreshTargets: async () => {
+    const { currentSessionId: sessionId } = get()
+    if (!sessionId) return
+    
+    try {
+      const result = await api.browser.listTargets(sessionId)
+      if (result?.success && result.data) {
+        set({ targets: result.data.targets || [] })
+      }
+    } catch (e) {
+      console.error('List targets error:', e)
+    }
+  },
+
+  // 切换目标
+  toggleTarget: async (targetId: string) => {
+    const { 
+      currentSessionId: sessionId, 
+      attachedTargetId, 
+      isIntercepting, 
+      isTrafficCapturing 
+    } = get()
+    
+    if (!sessionId) return { success: false, message: '会话未启动' }
+    
+    const isCurrentlyAttached = attachedTargetId === targetId
+    
+    try {
+      // 1. 如果正在拦截或捕获，切换任何目标状态前必须先停止
+      if (isIntercepting || isTrafficCapturing) {
+        if (isIntercepting) {
+          await api.session.disableInterception(sessionId)
+          set({ isIntercepting: false, activeConfigId: null })
+        }
+        if (isTrafficCapturing) {
+          await api.session.enableTrafficCapture(sessionId, false)
+          set({ isTrafficCapturing: false })
+        }
+      }
+
+      // 2. 如果点击的是当前已附着的目标 -> 执行“分离”
+      if (isCurrentlyAttached) {
+        const result = await api.browser.detachTarget(sessionId, targetId)
+        if (result?.success) {
+          set({ attachedTargetId: null })
+          return { success: true }
+        }
+        return { success: false, message: result?.message }
+      }
+
+      // 3. 如果点击的是新目标 -> 先分离旧的（如果有），再附着新的
+      if (attachedTargetId) {
+        await api.browser.detachTarget(sessionId, attachedTargetId)
+      }
+
+      const result = await api.browser.attachTarget(sessionId, targetId)
+      if (result?.success) {
+        set({ attachedTargetId: targetId })
+        return { success: true }
+      }
+      
+      set({ attachedTargetId: null })
+      return { success: false, message: result?.message }
+    } catch (e) {
+      return { success: false, message: String(e) }
+    }
+  },
   
-  // 添加事件（根据 isMatched 分开存储）
+  // 添加事件
   addInterceptEvent: (event) => set((state) => {
     console.log('[Store] 处理拦截事件:', event)
     
-    // 后端现在直接发送 NetworkEvent 扁平对象
-    // 我们根据 isMatched 字段进行分发，并为 UI 组件构造预期的嵌套结构
     if (event.isMatched) {
       const eventWithId: MatchedEventWithId = {
         networkEvent: event,
@@ -89,42 +166,83 @@ export const useSessionStore = create<SessionState>((set) => ({
       return {
         matchedEvents: [eventWithId, ...state.matchedEvents].slice(0, 200)
       }
+    }
+    return state
+  }),
+
+  // 添加全量流量事件 (Upsert 逻辑)
+  addTrafficEvent: (event) => set((state) => {
+    const existingIndex = state.trafficEvents.findIndex(e => e.id === event.id)
+    if (existingIndex > -1) {
+      const newList = [...state.trafficEvents]
+      newList[existingIndex] = { ...newList[existingIndex], ...event }
+      return { trafficEvents: newList }
     } else {
-      const eventWithId: UnmatchedEventWithId = {
-        networkEvent: event,
-        id: generateEventId(event.timestamp),
-      }
-      return {
-        unmatchedEvents: [eventWithId, ...state.unmatchedEvents].slice(0, 100)
-      }
+      return { trafficEvents: [event, ...state.trafficEvents].slice(0, 100) }
     }
   }),
   
   clearMatchedEvents: () => set({ matchedEvents: [] }),
-  clearUnmatchedEvents: () => set({ unmatchedEvents: [] }),
-  clearAllEvents: () => set({ matchedEvents: [], unmatchedEvents: [] }),
+  clearTrafficEvents: () => set({ trafficEvents: [] }),
+  clearAllEvents: () => set({ matchedEvents: [], trafficEvents: [] }),
 }))
 
 // 主题状态
+type ThemeMode = 'light' | 'dark' | 'system'
+
 interface ThemeState {
-  isDark: boolean
-  toggle: () => void
+  mode: ThemeMode
+  isDark: boolean  // 实际应用的主题（考虑 system 后的结果）
+  setMode: (mode: ThemeMode) => void
 }
 
-export const useThemeStore = create<ThemeState>((set) => ({
-  isDark: true,
-  toggle: () => set((state) => {
-    const newIsDark = !state.isDark
-    if (newIsDark) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-    return { isDark: newIsDark }
-  }),
-}))
+// 检测系统主题
+function getSystemTheme(): boolean {
+  if (typeof window === 'undefined') return true
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+
+// 应用主题到 DOM
+function applyTheme(isDark: boolean) {
+  if (isDark) {
+    document.documentElement.classList.add('dark')
+  } else {
+    document.documentElement.classList.remove('dark')
+  }
+}
+
+export const useThemeStore = create<ThemeState>((set, get) => {
+  // 初始化：默认 system 模式
+  const initialMode: ThemeMode = 'system'
+  const systemIsDark = getSystemTheme()
+  const initialIsDark = initialMode === 'system' ? systemIsDark : initialMode === 'dark'
+  
+  // 监听系统主题变化
+  if (typeof window !== 'undefined') {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    mediaQuery.addEventListener('change', (e) => {
+      const { mode } = get()
+      if (mode === 'system') {
+        const newIsDark = e.matches
+        set({ isDark: newIsDark })
+        applyTheme(newIsDark)
+      }
+    })
+  }
+  
+  return {
+    mode: initialMode,
+    isDark: initialIsDark,
+    setMode: (mode: ThemeMode) => {
+      const newIsDark = mode === 'system' ? getSystemTheme() : mode === 'dark'
+      set({ mode, isDark: newIsDark })
+      applyTheme(newIsDark)
+    },
+  }
+})
 
 // 初始化主题
 if (typeof window !== 'undefined') {
-  document.documentElement.classList.add('dark')
+  const systemIsDark = getSystemTheme()
+  applyTheme(systemIsDark)
 }

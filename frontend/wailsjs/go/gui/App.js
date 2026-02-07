@@ -34,6 +34,10 @@ export function EnableInterception(arg1) {
   return window['go']['gui']['App']['EnableInterception'](arg1);
 }
 
+export function EnableTrafficCapture(arg1, arg2) {
+  return window['go']['gui']['App']['EnableTrafficCapture'](arg1, arg2);
+}
+
 export function ExportConfig(arg1, arg2) {
   return window['go']['gui']['App']['ExportConfig'](arg1, arg2);
 }
@@ -62,12 +66,24 @@ export function GetCurrentSession() {
   return window['go']['gui']['App']['GetCurrentSession']();
 }
 
+export function GetDataDirectory() {
+  return window['go']['gui']['App']['GetDataDirectory']();
+}
+
+export function GetLogDirectory() {
+  return window['go']['gui']['App']['GetLogDirectory']();
+}
+
 export function GetRuleStats(arg1) {
   return window['go']['gui']['App']['GetRuleStats'](arg1);
 }
 
 export function GetSetting(arg1) {
   return window['go']['gui']['App']['GetSetting'](arg1);
+}
+
+export function GetSettings() {
+  return window['go']['gui']['App']['GetSettings']();
 }
 
 export function GetVersion() {
@@ -98,6 +114,10 @@ export function LoadRules(arg1, arg2) {
   return window['go']['gui']['App']['LoadRules'](arg1, arg2);
 }
 
+export function OpenDirectory(arg1) {
+  return window['go']['gui']['App']['OpenDirectory'](arg1);
+}
+
 export function QueryMatchedEventHistory(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
   return window['go']['gui']['App']['QueryMatchedEventHistory'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
@@ -106,16 +126,24 @@ export function RenameConfig(arg1, arg2) {
   return window['go']['gui']['App']['RenameConfig'](arg1, arg2);
 }
 
+export function ResetSettings() {
+  return window['go']['gui']['App']['ResetSettings']();
+}
+
 export function SaveConfig(arg1, arg2) {
   return window['go']['gui']['App']['SaveConfig'](arg1, arg2);
 }
 
-export function SetActiveConfig(arg1) {
-  return window['go']['gui']['App']['SetActiveConfig'](arg1);
+export function SaveSettings(arg1) {
+  return window['go']['gui']['App']['SaveSettings'](arg1);
 }
 
-export function SetCollectionMode(arg1, arg2) {
-  return window['go']['gui']['App']['SetCollectionMode'](arg1, arg2);
+export function SelectBrowserPath() {
+  return window['go']['gui']['App']['SelectBrowserPath']();
+}
+
+export function SetActiveConfig(arg1) {
+  return window['go']['gui']['App']['SetActiveConfig'](arg1);
 }
 
 export function SetDirty(arg1) {

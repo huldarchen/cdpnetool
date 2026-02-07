@@ -28,6 +28,12 @@
 - ✅ **事件监控**  
   实时查看匹配和未匹配的请求事件，提供 DevTools 风格的详情面板，便于调试和分析
 
+- ✅ **请求预览**  
+  全量流量监控，可查看所有网络请求（不仅限于匹配的请求），支持开启/关闭捕获
+
+- ✅ **系统设置**  
+  支持语言切换（简体中文/英文）、主题模式（浅色/深色/跟随系统）、浏览器自定义配置
+
 - ✅ **内置浏览器**  
   一键启动独立的 Chrome 实例，无需手动配置启动参数
 
@@ -80,6 +86,7 @@
 - **后端**：Go + Wails v2（原生桌面框架）
 - **协议**：Chrome DevTools Protocol (CDP)
 - **存储**：SQLite（配置和历史记录持久化）
+- **国际化**：react-i18next（支持中文/英文）
 
 ### 核心特性
 
@@ -119,7 +126,7 @@
 
 ### 图 1：主界面总览
 
-展示 Targets（目标管理）、Rules（规则配置）、Events（事件监控）三大核心面板
+展示 Targets（目标管理）、Rules（规则配置）、Events（事件监控）、Network（请求预览）四大核心面板
 
 **Targets 面板**：
 ![Targets 面板](./assets/images/Targets.png)
@@ -129,6 +136,9 @@
 
 **Events 面板**：
 ![Events 面板](./assets/images/Events.png)
+
+**Network 面板**：
+![Network 面板](./assets/images/Network.png)
 
 ---
 

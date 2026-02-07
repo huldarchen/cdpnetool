@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"cdpnetool/internal/browser"
@@ -36,6 +38,7 @@ type App struct {
 	eventRepo       *repo.EventRepo
 	isDirty         bool
 	cancelSubscribe context.CancelFunc
+	cancelTraffic   context.CancelFunc
 }
 
 // NewApp 创建并返回一个新的 App 实例。
@@ -92,6 +95,9 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.cancelSubscribe != nil {
 		a.cancelSubscribe()
 	}
+	if a.cancelTraffic != nil {
+		a.cancelTraffic()
+	}
 
 	if a.currentSession != "" {
 		_ = a.service.StopSession(ctx, a.currentSession)
@@ -123,6 +129,10 @@ func (a *App) StartSession(devToolsURL string) api.Response[SessionData] {
 		a.cancelSubscribe()
 		a.cancelSubscribe = nil
 	}
+	if a.cancelTraffic != nil {
+		a.cancelTraffic()
+		a.cancelTraffic = nil
+	}
 
 	cfg := domain.SessionConfig{DevToolsURL: devToolsURL}
 	sid, err := a.service.StartSession(a.ctx, cfg)
@@ -134,9 +144,14 @@ func (a *App) StartSession(devToolsURL string) api.Response[SessionData] {
 	a.currentSession = sid
 
 	// 启动事件订阅
-	ctx, cancel := context.WithCancel(a.ctx)
-	a.cancelSubscribe = cancel
-	go a.subscribeEvents(ctx, sid)
+	subCtx, subCancel := context.WithCancel(a.ctx)
+	a.cancelSubscribe = subCancel
+	go a.subscribeEvents(subCtx, sid)
+
+	// 启动全量流量订阅
+	trafficCtx, trafficCancel := context.WithCancel(a.ctx)
+	a.cancelTraffic = trafficCancel
+	go a.subscribeTraffic(trafficCtx, sid)
 
 	a.log.Info("会话启动成功", "sessionID", sid)
 	return api.OK(SessionData{SessionID: string(sid)})
@@ -150,6 +165,10 @@ func (a *App) StopSession(sessionID string) api.Response[api.EmptyData] {
 	if a.cancelSubscribe != nil {
 		a.cancelSubscribe()
 		a.cancelSubscribe = nil
+	}
+	if a.cancelTraffic != nil {
+		a.cancelTraffic()
+		a.cancelTraffic = nil
 	}
 
 	err := a.service.StopSession(a.ctx, domain.SessionID(sessionID))
@@ -218,10 +237,10 @@ func (a *App) BeforeClose(ctx context.Context) bool {
 
 	result, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 		Type:          runtime.QuestionDialog,
-		Title:         "提醒",
-		Message:       "当前有未保存的规则更改，确定要退出吗？",
-		DefaultButton: "否",
-		Buttons:       []string{"是", "否"},
+		Title:         "Warning",
+		Message:       "You have unsaved changes. Are you sure you want to exit?",
+		DefaultButton: "No",
+		Buttons:       []string{"Yes", "No"},
 	})
 
 	if err != nil {
@@ -230,14 +249,14 @@ func (a *App) BeforeClose(ctx context.Context) bool {
 	}
 
 	a.log.Debug("用户选择", "result", result)
-	return result == "否"
+	return result == "No"
 }
 
 // ExportConfig 弹出原生保存对话框导出配置
 func (a *App) ExportConfig(name, rulesJSON string) api.Response[api.EmptyData] {
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		DefaultFilename: name + ".json",
-		Title:           "导出配置",
+		Title:           "Export Configuration",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
 		},
@@ -303,9 +322,9 @@ func (a *App) LoadRules(sessionID string, rulesJSON string) api.Response[api.Emp
 	return api.OK(api.EmptyData{})
 }
 
-// SetCollectionMode 设置是否捕获未匹配的请求
-func (a *App) SetCollectionMode(sessionID string, enabled bool) api.Response[api.EmptyData] {
-	err := a.service.SetCollectionMode(a.ctx, domain.SessionID(sessionID), enabled)
+// EnableTrafficCapture 启用或禁用全量流量捕获。
+func (a *App) EnableTrafficCapture(sessionID string, enabled bool) api.Response[api.EmptyData] {
+	err := a.service.EnableTrafficCapture(a.ctx, domain.SessionID(sessionID), enabled)
 	if err != nil {
 		code, msg := a.translateError(err)
 		return api.Fail[api.EmptyData](code, msg)
@@ -359,6 +378,32 @@ func (a *App) subscribeEvents(ctx context.Context, sessionID domain.SessionID) {
 	}
 }
 
+// subscribeTraffic 订阅全量流量事件并通过 Wails 事件系统推送到前端。
+func (a *App) subscribeTraffic(ctx context.Context, sessionID domain.SessionID) {
+	ch, err := a.service.SubscribeTraffic(ctx, sessionID)
+	if err != nil {
+		a.log.Err(err, "订阅流量事件失败", "sessionID", sessionID)
+		return
+	}
+
+	a.log.Debug("开始订阅全量流量事件", "sessionID", sessionID)
+	for {
+		select {
+		case evt, ok := <-ch:
+			if !ok {
+				a.log.Debug("流量事件通道已关闭", "sessionID", sessionID)
+				return
+			}
+			evt.Session = sessionID
+			runtime.EventsEmit(a.ctx, "traffic-event", evt)
+
+		case <-ctx.Done():
+			a.log.Debug("流量订阅被取消", "sessionID", sessionID)
+			return
+		}
+	}
+}
+
 // LaunchBrowser 启动新的浏览器实例，如果已有浏览器运行则先关闭。
 func (a *App) LaunchBrowser(headless bool) api.Response[BrowserData] {
 	a.log.Info("启动浏览器", "headless", headless)
@@ -370,10 +415,28 @@ func (a *App) LaunchBrowser(headless bool) api.Response[BrowserData] {
 		a.browser = nil
 	}
 
+	// 从数据库读取浏览器设置
+	browserPath := a.settingsRepo.GetBrowserPath(a.ctx)
+	browserArgsStr := a.settingsRepo.GetBrowserArgs(a.ctx)
+
+	// 解析浏览器参数（按换行分割）
+	var browserArgs []string
+	if browserArgsStr != "" {
+		lines := strings.Split(browserArgsStr, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				browserArgs = append(browserArgs, line)
+			}
+		}
+	}
+
 	opts := browser.Options{
 		Logger:        a.log,
 		Headless:      headless,
 		ClearUserData: true,
+		ExecPath:      browserPath,
+		Args:          browserArgs,
 	}
 
 	b, err := browser.Start(a.ctx, opts)
@@ -672,4 +735,94 @@ func (a *App) CleanupEventHistory(retentionDays int) api.Response[api.EmptyData]
 // GetVersion 获取应用版本号
 func (a *App) GetVersion() api.Response[VersionData] {
 	return api.OK(VersionData{Version: a.cfg.Version})
+}
+
+// GetSettings 获取所有设置（带默认值）
+func (a *App) GetSettings() api.Response[SettingsData] {
+	ctx := context.Background()
+	settings, err := a.settingsRepo.GetAllWithDefaults(ctx)
+	if err != nil {
+		return api.Fail[SettingsData]("GET_SETTINGS_FAILED", "")
+	}
+	return api.OK(SettingsData{Settings: settings})
+}
+
+// SaveSettings 保存设置
+func (a *App) SaveSettings(settings map[string]string) api.Response[api.EmptyData] {
+	ctx := context.Background()
+	err := a.settingsRepo.SetMultiple(ctx, settings)
+	if err != nil {
+		return api.Fail[api.EmptyData]("SAVE_SETTINGS_FAILED", "")
+	}
+	return api.OK(api.EmptyData{})
+}
+
+// ResetSettings 恢复默认设置
+func (a *App) ResetSettings() api.Response[SettingsData] {
+	ctx := context.Background()
+	defaults := config.GetDefaultSettings()
+
+	settings := map[string]string{
+		model.SettingKeyLanguage:    defaults.Language,
+		model.SettingKeyTheme:       defaults.Theme,
+		model.SettingKeyBrowserArgs: defaults.BrowserArgs,
+		model.SettingKeyBrowserPath: defaults.BrowserPath,
+	}
+
+	err := a.settingsRepo.SetMultiple(ctx, settings)
+	if err != nil {
+		return api.Fail[SettingsData]("RESET_SETTINGS_FAILED", "")
+	}
+
+	return api.OK(SettingsData{Settings: settings})
+}
+
+// SelectBrowserPath 打开系统文件选择器，选择浏览器可执行文件
+func (a *App) SelectBrowserPath() api.Response[SettingData] {
+	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Browser Executable",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Executable Files", Pattern: "*.exe"},
+			{DisplayName: "All Files", Pattern: "*.*"},
+		},
+	})
+
+	if err != nil {
+		return api.Fail[SettingData]("SELECT_FILE_FAILED", "")
+	}
+
+	// 用户取消选择
+	if filePath == "" {
+		return api.Fail[SettingData]("CANCELLED", "")
+	}
+
+	return api.OK(SettingData{Value: filePath})
+}
+
+// OpenDirectory 打开指定目录
+func (a *App) OpenDirectory(path string) api.Response[api.EmptyData] {
+	cmd := exec.Command("explorer", path)
+	err := cmd.Start()
+	if err != nil {
+		return api.Fail[api.EmptyData]("OPEN_DIRECTORY_FAILED", "")
+	}
+	return api.OK(api.EmptyData{})
+}
+
+// GetDataDirectory 获取数据目录路径
+func (a *App) GetDataDirectory() api.Response[SettingData] {
+	dataDir, err := db.GetDefaultDir()
+	if err != nil {
+		return api.Fail[SettingData]("GET_DATA_DIR_FAILED", "")
+	}
+	return api.OK(SettingData{Value: dataDir})
+}
+
+// GetLogDirectory 获取日志目录路径
+func (a *App) GetLogDirectory() api.Response[SettingData] {
+	logDir, err := logger.GetDefaultLogDir()
+	if err != nil {
+		return api.Fail[SettingData]("GET_LOG_DIR_FAILED", "")
+	}
+	return api.OK(SettingData{Value: logDir})
 }

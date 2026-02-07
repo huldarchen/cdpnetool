@@ -41,11 +41,15 @@ type Service interface {
 	// SubscribeEvents 订阅事件
 	SubscribeEvents(ctx context.Context, id domain.SessionID) (<-chan domain.NetworkEvent, error)
 
-	// SetCollectionMode 设置是否采集未匹配的请求
-	SetCollectionMode(ctx context.Context, id domain.SessionID, enabled bool) error
+	// SubscribeTraffic 订阅全量流量流
+	SubscribeTraffic(ctx context.Context, id domain.SessionID) (<-chan domain.NetworkEvent, error)
+
+	// EnableTrafficCapture 启用/禁用流量捕获
+	EnableTrafficCapture(ctx context.Context, id domain.SessionID, enabled bool) error
 }
 
 // NewService 创建并返回服务接口实现
 func NewService(l logger.Logger) Service {
+	// 切换到新重构的编排器架构
 	return service.New(l)
 }

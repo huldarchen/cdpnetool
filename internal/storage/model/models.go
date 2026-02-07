@@ -13,8 +13,10 @@ type Setting struct {
 
 // 预定义的设置 Key
 const (
-	SettingKeyDevToolsURL  = "devtools_url"   // 开发者工具URL
+	SettingKeyLanguage     = "language"       // 语言
 	SettingKeyTheme        = "theme"          // 主题
+	SettingKeyBrowserArgs  = "browser_args"   // 浏览器启动参数
+	SettingKeyBrowserPath  = "browser_path"   // 浏览器可执行文件路径
 	SettingKeyWindowBounds = "window_bounds"  // 窗口大小和位置
 	SettingKeyLastConfigID = "last_config_id" // 上次使用的配置 ID
 )

@@ -18,6 +18,8 @@ export function DisableInterception(arg1:string):Promise<api.Response_cdpnetool_
 
 export function EnableInterception(arg1:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
+export function EnableTrafficCapture(arg1:string,arg2:boolean):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
+
 export function ExportConfig(arg1:string,arg2:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
 export function GenerateNewRule(arg1:string,arg2:number):Promise<api.Response_cdpnetool_internal_gui_NewRuleData_>;
@@ -32,9 +34,15 @@ export function GetConfig(arg1:number):Promise<api.Response_cdpnetool_internal_g
 
 export function GetCurrentSession():Promise<api.Response_cdpnetool_internal_gui_SessionData_>;
 
+export function GetDataDirectory():Promise<api.Response_cdpnetool_internal_gui_SettingData_>;
+
+export function GetLogDirectory():Promise<api.Response_cdpnetool_internal_gui_SettingData_>;
+
 export function GetRuleStats(arg1:string):Promise<api.Response_cdpnetool_internal_gui_StatsData_>;
 
 export function GetSetting(arg1:string):Promise<api.Response_cdpnetool_internal_gui_SettingData_>;
+
+export function GetSettings():Promise<api.Response_cdpnetool_internal_gui_SettingsData_>;
 
 export function GetVersion():Promise<api.Response_cdpnetool_internal_gui_VersionData_>;
 
@@ -50,15 +58,21 @@ export function LoadActiveConfigToSession():Promise<api.Response_cdpnetool_pkg_a
 
 export function LoadRules(arg1:string,arg2:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
+export function OpenDirectory(arg1:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
+
 export function QueryMatchedEventHistory(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:number,arg7:number,arg8:number):Promise<api.Response_cdpnetool_internal_gui_EventHistoryData_>;
 
 export function RenameConfig(arg1:number,arg2:string):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
+export function ResetSettings():Promise<api.Response_cdpnetool_internal_gui_SettingsData_>;
+
 export function SaveConfig(arg1:number,arg2:string):Promise<api.Response_cdpnetool_internal_gui_ConfigData_>;
 
-export function SetActiveConfig(arg1:number):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
+export function SaveSettings(arg1:Record<string, string>):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
-export function SetCollectionMode(arg1:string,arg2:boolean):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
+export function SelectBrowserPath():Promise<api.Response_cdpnetool_internal_gui_SettingData_>;
+
+export function SetActiveConfig(arg1:number):Promise<api.Response_cdpnetool_pkg_api_EmptyData_>;
 
 export function SetDirty(arg1:boolean):Promise<void>;
 

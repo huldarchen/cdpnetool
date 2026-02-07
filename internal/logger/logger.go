@@ -25,7 +25,8 @@ type Logger interface {
 type Options struct {
 	Level      string   // 日志级别: debug, info, warn, error
 	Writers    []string // 输出目标: console, file
-	Filename   string   // 日志文件名 (如果为空则自动生成)
+	Dir        string   // 日志目录（如果为空则使用默认目录）
+	Filename   string   // 日志文件名（如果为空则使用默认文件名 "app.log"）
 	MaxSize    int      // 每个日志文件最大 MB
 	MaxBackups int      // 保留的最大旧文件数
 	MaxAge     int      // 保留的最大天数
@@ -57,25 +58,34 @@ func New(opts Options) Logger {
 				TimeFormat: "2006-01-02 15:04:05.000",
 			})
 		case "file":
-			filename := opts.Filename
-			if filename == "" {
+			// 获取日志目录
+			logDir := opts.Dir
+			if logDir == "" {
 				var err error
-				filename, err = GetDefaultLogPath()
+				logDir, err = GetDefaultLogDir()
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "无法获取默认日志路径: %v\n", err)
+					fmt.Fprintf(os.Stderr, "无法获取默认日志目录: %v\n", err)
 					continue
 				}
 			}
 
+			// 获取日志文件名
+			logFilename := opts.Filename
+			if logFilename == "" {
+				logFilename = "app.log" // 默认文件名
+			}
+
+			// 拼接完整的日志文件路径
+			logPath := filepath.Join(logDir, logFilename)
+
 			// 确保日志目录存在
-			dir := filepath.Dir(filename)
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				fmt.Fprintf(os.Stderr, "无法创建日志目录 %s: %v\n", dir, err)
+			if err := os.MkdirAll(logDir, 0755); err != nil {
+				fmt.Fprintf(os.Stderr, "无法创建日志目录 %s: %v\n", logDir, err)
 				continue
 			}
 
 			lumberjackLogger := &lumberjack.Logger{
-				Filename:   filename,
+				Filename:   logPath,
 				MaxSize:    opts.MaxSize,
 				MaxBackups: opts.MaxBackups,
 				MaxAge:     opts.MaxAge,
@@ -140,8 +150,8 @@ func (z *zeroLogger) With(fields ...any) Logger {
 	return &zeroLogger{logger: z.logger.With().Fields(fields).Logger()}
 }
 
-// GetDefaultLogPath 获取平台相关的默认日志路径
-func GetDefaultLogPath() (string, error) {
+// GetDefaultLogDir 获取平台相关的默认日志目录（不包含文件名）
+func GetDefaultLogDir() (string, error) {
 	var baseDir string
 	switch runtime.GOOS {
 	case "windows":
@@ -165,5 +175,5 @@ func GetDefaultLogPath() (string, error) {
 			baseDir = filepath.Join(home, ".local", "share")
 		}
 	}
-	return filepath.Join(baseDir, "cdpnetool", "logs", "app.log"), nil
+	return filepath.Join(baseDir, "cdpnetool", "logs"), nil
 }

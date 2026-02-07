@@ -13,10 +13,10 @@ import (
 
 // Options 数据库配置选项
 type Options struct {
-	// Name 数据库文件名（如果指定了 FullPath，则忽略此项）
+	// Name 数据库文件名
 	Name string
-	// FullPath 数据库完整绝对路径（如果指定，则优先使用此路径）
-	FullPath string
+	// Dir 数据库目录路径（如果指定，则优先使用此目录；否则使用默认目录）
+	Dir string
 	// Prefix 表前缀
 	Prefix string
 	// Logger GORM 日志实现
@@ -26,18 +26,29 @@ type Options struct {
 // New 创建并初始化数据库连接。
 // 它会根据 Options 中提供的路径信息打开 SQLite 数据库，并配置命名策略和连接池。
 func New(opts Options) (*gorm.DB, error) {
-	dbPath := opts.FullPath
-	if dbPath == "" {
-		var err error
-		dbPath, err = GetDefaultPath(opts.Name)
-		if err != nil {
+	var dbPath string
+
+	// 处理 SQLite 内存数据库特殊情况
+	if opts.Name == ":memory:" {
+		dbPath = ":memory:"
+	} else {
+		// 获取数据库目录
+		dbDir := opts.Dir
+		if dbDir == "" {
+			var err error
+			dbDir, err = GetDefaultDir()
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// 确保数据库目录存在
+		if err := os.MkdirAll(dbDir, 0755); err != nil {
 			return nil, err
 		}
-	}
 
-	// 确保数据库目录存在
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
-		return nil, err
+		// 拼接完整的数据库文件路径
+		dbPath = filepath.Join(dbDir, opts.Name)
 	}
 
 	// 打开数据库连接
@@ -67,8 +78,8 @@ func Migrate(db *gorm.DB, models ...any) error {
 	return db.AutoMigrate(models...)
 }
 
-// GetDefaultPath 获取平台相关的默认数据库文件路径
-func GetDefaultPath(dbName string) (string, error) {
+// GetDefaultDir 获取平台相关的默认数据库目录（不包含文件名）
+func GetDefaultDir() (string, error) {
 	var baseDir string
 
 	switch runtime.GOOS {
@@ -97,5 +108,5 @@ func GetDefaultPath(dbName string) (string, error) {
 		}
 	}
 
-	return filepath.Join(baseDir, "cdpnetool", dbName), nil
+	return filepath.Join(baseDir, "cdpnetool"), nil
 }

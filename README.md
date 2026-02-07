@@ -1,5 +1,7 @@
 # cdpnetool
 
+[English](./README_EN.md) | 简体中文
+
 <p align="center">
   <img src="./docs/assets/images/logo.png" alt="cdpnetool Logo" width="200" />
 </p>
@@ -22,6 +24,8 @@ cdpnetool 是一款强大的网络请求拦截工具，通过 Chrome DevTools Pr
 - ✅ 可视化规则配置，支持丰富的匹配条件和修改行为
 - ✅ 配置管理：多配置保存、导入导出、快速切换
 - ✅ 事件监控：DevTools 风格的详情面板
+- ✅ 请求预览：全量流量查看，支持开启/关闭捕获
+- ✅ 系统设置：语言切换（中/英）、主题模式、浏览器配置
 - ✅ 无需证书：基于 CDP 协议直接控制浏览器
 
 ## 快速开始
@@ -43,7 +47,8 @@ macOS 和 Linux 平台需要从源码构建，详见 [文档](./docs/02-quick-st
 3. 点击「连接」连接到浏览器
 4. 在 Targets 面板附加要拦截的页面
 5. 在 Rules 面板创建规则并启用配置
-6. 在浏览器中触发请求，在 Events 面板查看结果
+6. 在 Events 面板查看匹配的请求
+7. （可选）在 Network 面板开启全量流量监控
 
 ## 文档
 
@@ -65,6 +70,7 @@ macOS 和 Linux 平台需要从源码构建，详见 [文档](./docs/02-quick-st
 - 后端：Go + Wails v2
 - 协议：Chrome DevTools Protocol (CDP)
 - 数据库：SQLite
+- 国际化：react-i18next（支持中文/英文）
 
 ## 开发
 

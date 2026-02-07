@@ -1,7 +1,7 @@
 // 拦截事件相关类型
 
 // 请求信息
-export interface RequestInfo {
+export interface Request {
   url: string
   method: string
   headers: Record<string, string>
@@ -10,7 +10,7 @@ export interface RequestInfo {
 }
 
 // 响应信息
-export interface ResponseInfo {
+export interface Response {
   statusCode: number
   headers: Record<string, string>
   body: string
@@ -29,12 +29,13 @@ export interface RuleMatch {
 
 // 网络事件（通用结构）
 export interface NetworkEvent {
+  id: string
   session: string
   target: string
   timestamp: number
   isMatched: boolean
-  request: RequestInfo
-  response?: ResponseInfo
+  request: Request
+  response?: Response
   finalResult?: 'blocked' | 'modified' | 'passed'
   matchedRules?: RuleMatch[]
 }
@@ -44,25 +45,8 @@ export interface MatchedEvent {
   networkEvent: NetworkEvent
 }
 
-// 未匹配的事件（仅内存，不存数据库）
-export interface UnmatchedEvent {
-  networkEvent: NetworkEvent
-}
-
-// 统一事件接口（用于通道传输）
-export interface InterceptEvent {
-  isMatched: boolean
-  matched?: MatchedEvent
-  unmatched?: UnmatchedEvent
-}
-
 // 前端扩展类型（添加本地 ID 用于 React key）
 export interface MatchedEventWithId extends MatchedEvent {
-  id: string
-}
-
-// 未匹配的事件（仅内存，不存数据库）
-export interface UnmatchedEventWithId extends UnmatchedEvent {
   id: string
 }
 
@@ -82,6 +66,3 @@ export const FINAL_RESULT_COLORS: Record<FinalResultType, { bg: string; text: st
   modified: { bg: 'bg-yellow-500/20', text: 'text-yellow-500' },
   passed: { bg: 'bg-green-500/20', text: 'text-green-500' },
 }
-
-// 未匹配事件的默认样式
-export const UNMATCHED_COLORS = { bg: 'bg-slate-500/20', text: 'text-slate-500' }
