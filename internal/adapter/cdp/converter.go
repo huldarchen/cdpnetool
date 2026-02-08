@@ -45,9 +45,7 @@ func ToNeutralRequest(ev *fetch.RequestPausedReply) *domain.Request {
 	}
 
 	// 解析 Cookie
-	if cookieHeader := req.Headers.Get("cookie"); cookieHeader != "" {
-		req.Cookies = transformer.ParseCookies(cookieHeader)
-	}
+	req.Cookies = transformer.ParseCookies(req.Headers.Get("Cookie"))
 
 	// 处理请求体：优先使用 PostDataEntries（支持大数据），回退到 PostData（已废弃）
 	if len(ev.Request.PostDataEntries) > 0 {
