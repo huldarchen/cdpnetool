@@ -69,16 +69,18 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
       })
   }, [])
 
-  const loadRuleSets = async () => {
+  const loadRuleSets = async (autoSelectFirst = true) => {
     try {
       const result = await api.config.list()
       if (result?.success && result.data) {
         const configs = result.data.configs || []
         setRuleSets(configs)
-        if (configs.length > 0) {
-          loadRuleSetData(configs[0])
-        } else {
-          setRuleSet(createEmptyConfig())
+        if (autoSelectFirst) {
+          if (configs.length > 0) {
+            loadRuleSetData(configs[0])
+          } else {
+            setRuleSet(createEmptyConfig())
+          }
         }
       }
     } catch (e) {
@@ -179,7 +181,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     try {
       const result = await api.config.create(name)
       if (result?.success && result.data && result.data.config) {
-        await loadRuleSets()
+        await loadRuleSets(false)  // 不自动选中，后面手动选中新创建的
         const newConfig = JSON.parse(result.data.configJson) as Config
         setRuleSet(newConfig)
         setCurrentRuleSetId(result.data.config.id)
@@ -213,7 +215,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     try {
       const result = await api.config.delete(id)
       if (result?.success) {
-        await loadRuleSets()
+        await loadRuleSets(false)  // 不自动选中，后面手动处理
         if (id === currentRuleSetId) {
           const remaining = ruleSets.filter(r => r.id !== id)
           if (remaining.length > 0) {
@@ -241,7 +243,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
     try {
       const result = await api.config.rename(id, newName.trim())
       if (result?.success) {
-        await loadRuleSets()
+        await loadRuleSets(false)  // 只刷新列表，不改变选中状态
         if (id === currentRuleSetId) {
           setCurrentRuleSetName(newName.trim())
         }
@@ -366,7 +368,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
       }
       
       updateDirty(false)
-      await loadRuleSets()
+      await loadRuleSets(false)  // 只刷新列表，不改变选中状态
       
       if (currentRuleSetId === activeConfigId && sessionId) {
         await api.session.loadRules(sessionId, configJson)
@@ -422,7 +424,7 @@ export function RulesPanel({ sessionId, isConnected, attachedTargetId, setInterc
           toast({ variant: 'success', title: t('common.import') + ' ' + t('common.success') })
           setShowImportExport(false)
           // 刷新配置列表
-          await loadRuleSets()
+          await loadRuleSets(false)  // 不自动选中，后面手动选中导入的配置
           // 选中导入的配置
           const importedRecord = result.data.config
           if (importedRecord) {
